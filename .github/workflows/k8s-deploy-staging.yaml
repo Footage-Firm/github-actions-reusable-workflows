@@ -1,20 +1,11 @@
 ---
-name: "Build, push, and deploy image to staging"
+name: "Deploy image to staging"
 
 on: 
   workflow_call:
     inputs:
       argocd_app_name:
         description: "ArgoCD app name"
-        required: true
-        type: string
-      build_extra_args:
-        default: ""
-        description: "Extra args for the image build"
-        required: false
-        type: string
-      container_registry:
-        description: "Container registry to store the asset built within this workflow"
         required: true
         type: string
       default_branch:
@@ -47,15 +38,13 @@ on:
         description: "Slack channel name"
         required: true
         type: string
+      slack_ts:
+        description: "Slack message timestamp"
+        required: true
+        type: string
 
     secrets:
       ARGOCD_TOKEN:
-        required: true
-        type: string
-      ECR_LOGIN_AWS_ACCESS_KEY_ID:
-        required: true
-        type: string
-      ECR_LOGIN_AWS_SECRET_ACCESS_KEY:
         required: true
         type: string
       GH_PRIVATE_REPO_TOKEN:
@@ -83,97 +72,8 @@ env:
   YQ_VERSION: "v4.12.2"
 
 jobs:
-  build_and_release:
-    name: Build image and create release
-    runs-on: ubuntu-latest
-
-    # Outputs that need to be exposed for subsequent jobs
-    outputs:
-      slack_ts: "${{ steps.slack_init.outputs.slack_ts }}"
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Show git commit data
-        uses: rlespinasse/git-commit-data-action@v1.x
-
-      - name: Notify Slack a build has started
-        id: slack_init
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
-        with:
-          action: "init"
-          repo_name: "${{ github.repository }}"
-          commit_sha: "${{ github.sha }}"
-          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
-          commit_author: "${{ github.actor }}"
-          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
-          channel: "${{ env.DEPLOYMENT_SLACK_CHANNEL_NAME }}"
-
-      - name: Set tag output
-        id: set_tag
-        run: |
-          echo "::set-output name=tag::$(date +"%m-%d-%Y")-$(git rev-parse --short HEAD)"
-
-      - name: Show tag output
-        id: debug
-        run: echo "${{ steps.set_tag.outputs.tag }}"
-
-      - name: Build and push
-        uses: whoan/docker-build-with-cache-action@v5
-        with:
-          image_tag: "${{ steps.set_tag.outputs.tag }}"
-          username: "${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}"
-          password: "${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}"
-          registry: "${{ inputs.container_registry }}"
-          image_name: "${{ env.IMAGE_NAME }}"
-          build_extra_args: "${{ inputs.build_extra_args }}"
-
-      - uses: mukunku/tag-exists-action@v1.0.0
-        id: checkTag
-        with: 
-          tag: "${{ steps.set_tag.outputs.tag }}"
-        env:
-          GITHUB_TOKEN: "${{ secrets.GH_PRIVATE_REPO_TOKEN }}"
-
-      - name: Bump version and push tag
-        if: "${{ ! (steps.checkTag.outputs.exists == 'true') }}"
-        id: tag_version
-        uses: mathieudutour/github-tag-action@v5.5
-        with:
-          custom_tag: "${{ steps.set_tag.outputs.tag }}"
-          github_token: "${{ secrets.GH_PRIVATE_REPO_TOKEN }}"
-          tag_prefix: ""
-
-      - name: Create a GitHub release
-        if: "${{ ! (steps.checkTag.outputs.exists == 'true') }}"
-        uses: softprops/action-gh-release@v0.1.12
-        with:
-          name: "Release ${{ steps.tag_version.outputs.new_tag }}"
-          tag_name: "${{ steps.tag_version.outputs.new_tag }}"
-          body: "${{ steps.tag_version.outputs.changelog }}"
-        env:
-          GITHUB_TOKEN: "${{ secrets.GH_PRIVATE_REPO_TOKEN }}"
-
-      - name: Notify slack of a failure
-        if: "${{ ! success() }}"
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
-        with:
-          action: "error"
-          slack_ts: "${{ steps.slack_init.outputs.slack_ts }}"
-          repo_name: "${{ github.repository }}"
-          commit_sha: "${{ github.sha }}"
-          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
-          commit_author: "${{ github.actor }}"
-          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
-          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
-          channel: "${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}"
-
   deploy_staging:
     name: Deploy to staging
-    needs: build_and_release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -279,7 +179,7 @@ jobs:
         with:
           action: "deploy_to_staging"
           argocd_app: "${{ env.ARGOCD_APP_NAME }}"
-          slack_ts: "${{ needs.build_and_release.outputs.slack_ts }}"
+          slack_ts: "${{ inputs.slack_ts }}"
           app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
@@ -293,7 +193,7 @@ jobs:
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
-          slack_ts: "${{ needs.build_and_release.outputs.slack_ts }}"
+          slack_ts: "${{ inputs.slack_ts }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
           commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
