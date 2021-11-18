@@ -44,6 +44,8 @@ on:
         required: true
       GH_PRIVATE_REPO_TOKEN:
         required: true
+      HELM_REPO_PASSWORD:
+        required: true
       PLATFORMS_BOT_AUTH_TOKEN:
         required: true
       PLATFORM_GITHUB_TOKEN:

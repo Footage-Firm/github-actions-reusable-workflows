@@ -46,6 +46,8 @@ on:
     secrets:
       ARGOCD_TOKEN:
         required: true
+      HELM_REPO_PASSWORD:
+        required: true
       GH_PRIVATE_REPO_TOKEN:
         required: true
       PLATFORMS_BOT_AUTH_TOKEN:
