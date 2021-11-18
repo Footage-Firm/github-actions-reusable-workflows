@@ -42,16 +42,12 @@ on:
     secrets:
       ARGOCD_TOKEN:
         required: true
-        type: string
       GH_PRIVATE_REPO_TOKEN:
         required: true
-        type: string
       PLATFORMS_BOT_AUTH_TOKEN:
         required: true
-        type: string
       PLATFORM_GITHUB_TOKEN:
         required: true
-        type: string
 
 env:
   ARGOCD_APP_ENDPOINT: "https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}"
