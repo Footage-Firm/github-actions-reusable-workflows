@@ -98,7 +98,7 @@ jobs:
           echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
           echo " - ${{ env.GIT_COMMIT_MESSAGE_BODY }}"
 
-      - name: Update image tag value
+      - name: Push new Helm chart
         run: |
           # Get Helm
           curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
@@ -126,7 +126,7 @@ jobs:
           rm -rf ./tmp
 
           # Deploy to Kubernetes
-          HELM_VALUES_FILE="${K8S_TARGET_ENV}.yaml"
+          HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
           tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.sb-service.image.tag = env(tag)' -i "${HELM_VALUES_FILE}"
           rm -f ./yq
           helm cm-push --version="v${{ steps.get_tag.outputs.tag }}" . chartmuseum -f

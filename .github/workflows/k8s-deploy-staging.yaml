@@ -106,7 +106,7 @@ jobs:
           echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
           echo " - ${{ env.GIT_COMMIT_MESSAGE_BODY }}"
 
-      - name: Update image tag value
+      - name: Push new Helm chart
         run: |
           # Get Helm
           curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
