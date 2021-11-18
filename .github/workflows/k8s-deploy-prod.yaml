@@ -1,0 +1,193 @@
+---
+name: "Deploy to prod"
+
+on:
+  workflow_call:
+    inputs:
+      argocd_app_name:
+        description: "ArgoCD app name"
+        required: true
+        type: string
+      default_branch:
+        description: "Default branch"
+        required: true
+        type: string
+      helm_values_file:
+        default: "helm/prod.yaml"
+        description: "(Optional) Helm values file where the image tag gets updated"
+        required: false
+        type: string
+      helm_values_file_image_tag_path:
+        default: "sb-service.image.tag"
+        description: "(Optional) Path to the image tag in the helm values file"
+        required: false
+        type: string
+      image_name:
+        description: "Image name"
+        required: true
+        type: string
+      image_tag_prefix:
+        description: "(Optional) Image tag prefix"
+        required: false
+        type: string
+      slack_channel_id:
+        description: "Slack channel ID"
+        required: true
+        type: string
+      slack_channel_name:
+        description: "Slack channel name"
+        required: true
+        type: string
+
+    secrets:
+      ARGOCD_TOKEN:
+        required: true
+      GH_PRIVATE_REPO_TOKEN:
+        required: true
+      HELM_REPO_PASSWORD:
+        required: true
+      PLATFORMS_BOT_AUTH_TOKEN:
+        required: true
+      PLATFORM_GITHUB_TOKEN:
+        required: true
+
+env:
+  ARGOCD_APP_ENDPOINT: "https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}"
+  ARGOCD_APP_NAME: "${{ inputs.argocd_app_name }}"
+  APP_ENVIRONMENT: "prod"
+  DEFAULT_BRANCH: "${{ inputs.default_branch }}"
+  DEPLOYMENT_SLACK_CHANNEL_NAME: "${{ inputs.slack_channel_name }}"
+  DEPLOYMENT_SLACK_CHANNEL_ID: "${{ inputs.slack_channel_id }}"
+  HELM_REPO_USERNAME: chartblocks
+  HELM_VALUES_FILE: "${{ inputs.helm_values_file }}"
+  HELM_VALUES_FILE_IMAGE_TAG_PATH: "${{ inputs.helm_values_file_image_tag_path }}"
+  IMAGE_NAME: "${{ inputs.image_name }}"
+  LATEST_HELM_CHART_VERSION: "v0.0.0"
+  YQ_VERSION: "v4.12.2"
+
+jobs:
+  deploy_prod:
+    name: Deploy to prod
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+
+      - name: Get latest tag
+        id: get_tag
+        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+
+      - name: Expose git commit data
+        uses: rlespinasse/git-commit-data-action@v1.x
+
+      - name: Print git commit data
+        run: |
+          echo "Get author info"
+          echo " - ${{ env.GIT_COMMIT_AUTHOR }}"
+          echo " - ${{ env.GIT_COMMIT_AUTHOR_NAME }}"
+          echo " - ${{ env.GIT_COMMIT_AUTHOR_EMAIL }}"
+          echo "Get committer info"
+          echo " - ${{ env.GIT_COMMIT_COMMITTER }}"
+          echo " - ${{ env.GIT_COMMIT_COMMITTER_NAME }}"
+          echo " - ${{ env.GIT_COMMIT_COMMITTER_EMAIL }}"
+          echo "Get message info"
+          echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
+          echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
+          echo " - ${{ env.GIT_COMMIT_MESSAGE_BODY }}"
+
+      - name: Update image tag value
+        run: |
+          # Get Helm
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh -v v3.6.2
+          helm plugin install https://github.com/chartmuseum/helm-push.git
+
+          # Update Helm with repo stuff
+          cd helm
+          helm repo add chartmuseum https://charts.storyblocks.io --username "${{ env.HELM_REPO_USERNAME }}" --password "${{ secrets.HELM_REPO_PASSWORD }}"
+          helm repo update
+          helm dep update
+
+          # Get yq
+          wget -qO ./yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          chmod +x ./yq
+
+          # Update local chart to ensure image tag and commit hash for other envs aren't overridden
+          chartname="$( ./yq e '.name' Chart.yaml )"
+          helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
+          for i in staging prod; do
+            live_deploy_tag="$( ./yq e '.sb-service.image.tag' "tmp/$chartname/$i.yaml" )" \
+              ./yq e '.sb-service.image.tag = env(live_deploy_tag)' -i "$i.yaml"
+          done
+          rm -rf ./tmp
+
+          # Deploy to Kubernetes
+          HELM_VALUES_FILE="${K8S_TARGET_ENV}.yaml"
+          tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.sb-service.image.tag = env(tag)' -i "${HELM_VALUES_FILE}"
+          rm -f ./yq
+          helm cm-push --version="v${{ steps.get_tag.outputs.tag }}" . chartmuseum -f
+          helm cm-push --version="${LATEST_HELM_CHART_VERSION}" . chartmuseum -f
+
+      - name: Set Helm chart version in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ env.ARGOCD_APP_NAME }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --revision "v${{ steps.get_tag.outputs.tag }}"
+
+      - name: Force ArgoCD refresh
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app get "${{ env.ARGOCD_APP_NAME }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --hard-refresh
+
+      - name: Trigger Helm deploy
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: "${{ secrets.PLATFORM_GITHUB_TOKEN }}"
+        with:
+          command: app sync "${{ env.ARGOCD_APP_NAME }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+
+      - name: Wait for deploy to complete
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: "${{ secrets.PLATFORM_GITHUB_TOKEN }}"
+        with:
+          command: app wait "${{ env.ARGOCD_APP_NAME }}" --timeout 480
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+
+      - name: Update deployment message
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "done"
+          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
+          commit_author: "${{ github.event.client_payload.github_actor }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          channel: "${{ github.event.client_payload.slack_channel_id }}"
+
+      - name: Notify slack of a failure
+        if: "${{ ! success() }}"
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "error"
+          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
+          commit_author: "${{ github.event.client_payload.github_actor }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          channel: "${{ github.event.client_payload.slack_channel_id }}"
