@@ -120,25 +120,24 @@ jobs:
           chartname="$( ./yq e '.name' Chart.yaml )"
           helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
           for i in staging prod; do
-            live_deploy_tag="$( ./yq e '.sb-service.image.tag' "tmp/$chartname/$i.yaml" )" \
-              ./yq e '.sb-service.image.tag = env(live_deploy_tag)' -i "$i.yaml"
+            live_deploy_tag="$( ./yq e ".$HELM_VALUES_FILE_IMAGE_TAG_PATH" "tmp/$chartname/$i.yaml" )" \
+              ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(live_deploy_tag)' -i "$i.yaml"
           done
           rm -rf ./tmp
 
-          # Deploy to Kubernetes
+          # Deploy to Chartmuseum
           HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
-          tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.sb-service.image.tag = env(tag)' -i "${HELM_VALUES_FILE}"
+          tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
           rm -f ./yq
           helm cm-push --version="v${{ steps.get_tag.outputs.tag }}" . chartmuseum -f
-          helm cm-push --version="${LATEST_HELM_CHART_VERSION}" . chartmuseum -f
 
-      - name: Set Helm chart version in ArgoCD
+      - name: Set image version in ArgoCD
         uses: clowdhaus/argo-cd-action/@main
         env:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
         with:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
-          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --revision "v${{ steps.get_tag.outputs.tag }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ steps.get_tag.outputs.tag }}"
 
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
