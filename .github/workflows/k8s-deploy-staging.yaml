@@ -122,12 +122,16 @@ jobs:
 
           # Update local chart to ensure image tag and commit hash for other envs aren't overridden
           chartname="$( ./yq e '.name' Chart.yaml )"
-          helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
-          for i in staging prod; do
-            live_deploy_tag="$( ./yq e ".$HELM_VALUES_FILE_IMAGE_TAG_PATH" "tmp/$chartname/$i.yaml" )" \
-              ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(live_deploy_tag)' -i "$i.yaml"
-          done
-          rm -rf ./tmp
+          if helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
+          then
+            for i in staging prod; do
+              live_deploy_tag="$( ./yq e ".$HELM_VALUES_FILE_IMAGE_TAG_PATH" "tmp/$chartname/$i.yaml" )" \
+                ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(live_deploy_tag)' -i "$i.yaml"
+            done
+            rm -rf ./tmp
+          else
+            helm cm-push --version="${LATEST_HELM_CHART_VERSION}" . chartmuseum
+          fi
 
           # Deploy to Chartmuseum
           HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
