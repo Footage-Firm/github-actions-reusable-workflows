@@ -172,7 +172,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Notify Slack the staging deploy is done
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "deploy_to_staging"
           argocd_app: "${{ env.ARGOCD_APP_NAME }}"
@@ -187,7 +187,7 @@ jobs:
 
       - name: Notify slack of a failure
         if: "${{ ! success() }}"
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "error"
           slack_ts: "${{ inputs.slack_ts }}"
