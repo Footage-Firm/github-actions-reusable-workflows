@@ -98,9 +98,7 @@ jobs:
           echo " - ${{ env.GIT_COMMIT_COMMITTER_NAME }}"
           echo " - ${{ env.GIT_COMMIT_COMMITTER_EMAIL }}"
           echo "Get message info"
-          echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
           echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
-          echo " - ${{ env.GIT_COMMIT_MESSAGE_BODY }}"
 
       - name: Push new Helm chart
         run: |
@@ -180,7 +178,7 @@ jobs:
           app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
-          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
           commit_author: "${{ github.actor }}"
           platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
           channel: "${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}"
@@ -193,7 +191,7 @@ jobs:
           slack_ts: "${{ inputs.slack_ts }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
-          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
           commit_author: "${{ github.actor }}"
           platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
           argocd_app: "${{ env.ARGOCD_APP_NAME }}"
