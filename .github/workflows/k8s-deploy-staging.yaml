@@ -122,7 +122,7 @@ jobs:
           chartname="$( ./yq e '.name' Chart.yaml )"
           if helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
           then
-            for i in staging prod; do
+            for i in values staging prod; do
               live_deploy_tag="$( ./yq e ".$HELM_VALUES_FILE_IMAGE_TAG_PATH" "tmp/$chartname/$i.yaml" )" \
                 ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(live_deploy_tag)' -i "$i.yaml"
             done
