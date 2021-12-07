@@ -13,8 +13,13 @@ on:
         required: true
         type: string
       helm_values_file:
+        default: "helm/values.yaml"
+        description: "(Optional) Primary Helm values file where the image tag gets updated"
+        required: false
+        type: string
+      helm_environment_values_file:
         default: "helm/staging.yaml"
-        description: "(Optional) Helm values file where the image tag gets updated"
+        description: "(Optional) Helm values file, for a specific environment, where the image tag gets updated"
         required: false
         type: string
       helm_values_file_image_tag_path:
@@ -60,6 +65,7 @@ env:
   DEPLOYMENT_SLACK_CHANNEL_ID: "${{ inputs.slack_channel_id }}"
   HELM_REPO_USERNAME: chartblocks
   HELM_VALUES_FILE: "${{ inputs.helm_values_file }}"
+  HELM_ENV_VALUES_FILE: "${{ inputs.helm_environment_values_file }}"
   HELM_VALUES_FILE_IMAGE_TAG_PATH: "${{ inputs.helm_values_file_image_tag_path }}"
   IMAGE_NAME: "${{ inputs.image_name }}"
   LATEST_HELM_CHART_VERSION: "v0.0.0"
@@ -122,7 +128,7 @@ jobs:
           chartname="$( ./yq e '.name' Chart.yaml )"
           if helm fetch chartmuseum/"$chartname" --version="${LATEST_HELM_CHART_VERSION}" --destination tmp --untar
           then
-            for i in values staging prod; do
+            for i in staging prod; do
               live_deploy_tag="$( ./yq e ".$HELM_VALUES_FILE_IMAGE_TAG_PATH" "tmp/$chartname/$i.yaml" )" \
                 ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(live_deploy_tag)' -i "$i.yaml"
             done
@@ -134,6 +140,7 @@ jobs:
           # Deploy to Chartmuseum
           HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
           tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
+          tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_ENV_VALUES_FILE}"
           rm -f ./yq
           helm cm-push --version="${LATEST_HELM_CHART_VERSION}" . chartmuseum -f
 
