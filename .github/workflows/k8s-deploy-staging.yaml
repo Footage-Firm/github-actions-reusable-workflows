@@ -13,12 +13,12 @@ on:
         required: true
         type: string
       helm_values_file:
-        default: "helm/values.yaml"
+        default: "values.yaml"
         description: "(Optional) Primary Helm values file where the image tag gets updated"
         required: false
         type: string
       helm_environment_values_file:
-        default: "helm/staging.yaml"
+        default: "staging.yaml"
         description: "(Optional) Helm values file, for a specific environment, where the image tag gets updated"
         required: false
         type: string
@@ -138,7 +138,6 @@ jobs:
           fi
 
           # Deploy to Chartmuseum
-          HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
           tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
           tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_ENV_VALUES_FILE}"
           rm -f ./yq
