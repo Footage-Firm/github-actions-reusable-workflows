@@ -166,7 +166,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ steps.get_tag.outputs.tag }}"
 
       - name: Set image version in ArgoCD
-        if: ${{ ! inputs.image_tag == 'get_tag' }}
+        if: ${{ ! (inputs.image_tag == 'get_tag') }}
         uses: clowdhaus/argo-cd-action/@main
         env:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
