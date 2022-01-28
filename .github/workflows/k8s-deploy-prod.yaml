@@ -26,6 +26,11 @@ on:
         description: "Image name"
         required: true
         type: string
+      image_tag:
+        default: "get_tag"
+        description: "Image tag"
+        required: false
+        type: string
       image_tag_prefix:
         description: "(Optional) Image tag prefix"
         required: false
@@ -77,6 +82,7 @@ jobs:
           token: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
 
       - name: Get latest tag
+        if: ${{ inputs.image_tag == 'get_tag') }}
         id: get_tag
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
 
@@ -125,17 +131,30 @@ jobs:
 
           # Deploy to Chartmuseum
           HELM_VALUES_FILE="${APP_ENVIRONMENT}.yaml"
-          tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
+          if [[ ${{ inputs.image_tag }} == "get_tag" ]]; then        
+            tag="${{ steps.get_tag.outputs.tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
+          else
+            tag="${{ inputs.image_tag }}" ./yq e '.'$HELM_VALUES_FILE_IMAGE_TAG_PATH' = env(tag)' -i "${HELM_VALUES_FILE}"
+          fi
           rm -f ./yq
-          helm cm-push --version="v${{ steps.get_tag.outputs.tag }}" . chartmuseum -f
 
       - name: Set image version in ArgoCD
+        if: ${{ inputs.image_tag == 'get_tag') }}
         uses: clowdhaus/argo-cd-action/@main
         env:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
         with:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ steps.get_tag.outputs.tag }}"
+
+      - name: Set image version in ArgoCD
+        if: ${{ ! inputs.image_tag == 'get_tag') }}
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ env.ARGOCD_APP_NAME }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ inputs.image_tag }}"
 
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
