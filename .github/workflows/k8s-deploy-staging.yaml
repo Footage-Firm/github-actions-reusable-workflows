@@ -88,12 +88,12 @@ jobs:
           fetch-depth: 0
 
       - name: Get latest tag
-        if: ${{ inputs.image_tag == 'get_tag') }}
+        if: ${{ inputs.image_tag == 'get_tag' }}
         id: get_tag
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
 
       - name: Show tag output
-        if: ${{ inputs.image_tag == 'get_tag') }}
+        if: ${{ inputs.image_tag == 'get_tag' }}
         id: debug_tag
         run: echo "${{ steps.get_tag.outputs.tag }}"
 
@@ -157,7 +157,7 @@ jobs:
           helm cm-push --version="${LATEST_HELM_CHART_VERSION}" . chartmuseum -f
 
       - name: Set image version in ArgoCD
-        if: ${{ inputs.image_tag == 'get_tag') }}
+        if: ${{ inputs.image_tag == 'get_tag' }}
         uses: clowdhaus/argo-cd-action/@main
         env:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
@@ -166,7 +166,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ steps.get_tag.outputs.tag }}"
 
       - name: Set image version in ArgoCD
-        if: ${{ ! inputs.image_tag == 'get_tag') }}
+        if: ${{ ! inputs.image_tag == 'get_tag' }}
         uses: clowdhaus/argo-cd-action/@main
         env:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
