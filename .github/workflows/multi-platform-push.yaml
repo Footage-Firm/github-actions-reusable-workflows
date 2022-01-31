@@ -1,5 +1,5 @@
 ---
-name: Push image
+name: Push multi-platform image manifest
 
 on: 
   workflow_call:
@@ -51,7 +51,7 @@ env:
 
 jobs:
   push_multi_platform_manifest:
-    name: Push multi-platform manifest
+    name: Push image manifest
     runs-on: ubuntu-latest
 
     steps:
