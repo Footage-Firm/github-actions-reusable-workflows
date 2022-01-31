@@ -1,5 +1,5 @@
 ---
-name: "Deploy to prod"
+name: Deploy to prod
 
 on:
   workflow_call:

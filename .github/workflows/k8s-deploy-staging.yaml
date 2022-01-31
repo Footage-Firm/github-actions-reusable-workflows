@@ -1,5 +1,5 @@
 ---
-name: "Deploy image to staging"
+name: Deploy image to staging
 
 on: 
   workflow_call:
