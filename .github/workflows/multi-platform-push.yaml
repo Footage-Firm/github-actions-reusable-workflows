@@ -1,0 +1,92 @@
+---
+name: Push multi-platform image
+
+on: 
+  workflow_call:
+    inputs:
+      comma_separated_platforms:
+        default: linux/amd64,linux/arm64
+        description: Comma-separated list of platforms to push a multi-platform image manifest for
+        required: false
+        type: string
+      image_name:
+        description: Image name
+        required: true
+        type: string
+      image_registry:
+        default: videoblocks
+        description: Image registry
+        required: false
+        type: string
+      image_registry_type:
+        default: dockerhub
+        description: Image registry type
+        required: false
+        type: string
+      multi_platform_image_tag:
+        default: multi-platform-latest
+        description: Tag to be used when pushing up the multi-platform image
+        required: false
+        type: string
+      source_tag_suffix:
+        default: latest
+        description: Suffix of the tags used when the platform-specific images were pushed in the jobs prior to this one
+        required: false
+        type: string
+
+    secrets:
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_PASSWORD:
+        required: true
+
+env:
+  COMMA_SEPARATED_PLATFORMS: ${{ inputs.comma_separated_platforms }}
+  IMAGE_NAME: ${{ inputs.image_name }}
+  IMAGE_REGISTRY: ${{ inputs.image_registry }}
+  IMAGE_REGISTRY_TYPE: ${{ inputs.image_registry_type }}
+  MULTI_PLATFORM_IMAGE_TAG: ${{ inputs.multi_platform_image_tag }}
+  SOURCE_TAG_SUFFIX: ${{ inputs.source_tag_suffix }}
+  TOOL_VERSION: v1.0.3
+
+jobs:
+  push_multi_platform_manifest:
+    name: Push multi-platform manifest
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    steps:
+      - name: Login to Docker Hub
+        if: ${{ env.REGISTRY_TYPE == 'dockerhub' }}
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Login to ECR
+        if: ${{ env.REGISTRY_TYPE == 'ecr' }}
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Install manifest-tool
+        run: |
+          wget -O ./manifest-tool https://github.com/estesp/manifest-tool/releases/download/${{ env.TOOL_VERSION }}/manifest-tool-linux-amd64
+          chmod +x ./manifest-tool
+
+      - name: Push multi-platform image manifest
+        run: |
+          ./manifest-tool \
+            --username="${{ secrets.REGISTRY_USERNAME }}" --password="${{ secrets.REGISTRY_PASSWORD }}" \
+            push from-args \
+            --platforms ${{ env.COMMA_SEPARATED_PLATFORMS }} \
+            --template ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ env.SOURCE_TAG_SUFFIX }} \
+            --target ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.MULTI_PLATFORM_IMAGE_TAG }}
+
+      - name: Show manifest output
+        run: |
+          ./manifest-tool \
+            --username="${{ secrets.REGISTRY_USERNAME }}" --password="${{ secrets.REGISTRY_PASSWORD }}" \
+            inspect ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.MULTI_PLATFORM_IMAGE_TAG }}
