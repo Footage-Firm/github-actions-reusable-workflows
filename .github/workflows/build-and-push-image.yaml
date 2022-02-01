@@ -120,7 +120,7 @@ jobs:
           commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
           commit_author: ${{ github.actor }}
           platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
-          channel: ${{ secrets.IMAGE_BUILD_ARGS }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_NAME }}
 
       - name: Set slack_ts output
         id: set_slack_ts
