@@ -45,7 +45,7 @@ on:
     outputs:
       slack_ts:
         description: Slack timestamp used for updating deployment messges
-        value: ${{ build_and_push.outputs.slack_ts }}
+        value: ${{ jobs.build_and_push.outputs.slack_ts }}
 
     secrets:
       GH_PRIVATE_REPO_TOKEN:
