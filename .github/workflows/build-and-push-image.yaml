@@ -131,8 +131,8 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
-          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
           registry: ${{ env.IMAGE_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: ${{ secrets.BUILD_ARGS }}
