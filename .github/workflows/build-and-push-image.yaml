@@ -8,11 +8,6 @@ on:
         description: ArgoCD app name
         required: true
         type: string
-      build_args:
-        default: no_build_args
-        description: Image build args
-        required: false
-        type: string
       image_name:
         description: Image name
         required: true
@@ -48,6 +43,8 @@ on:
         value: ${{ jobs.build_and_push.outputs.slack_ts }}
 
     secrets:
+      BUILD_ARGS:
+        required: true
       GH_PRIVATE_REPO_TOKEN:
         required: true
       PLATFORMS_BOT_AUTH_TOKEN:
@@ -59,7 +56,6 @@ on:
 
 env:
   ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
-  BUILD_ARGS: ${{ inputs.build_args }}
   DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
   IMAGE_NAME: ${{ inputs.image_name }}
@@ -132,17 +128,6 @@ jobs:
             echo "::set-output name=slack_ts_${{ matrix.platform }}::$(echo ${{ steps.slack_init.outputs.slack_ts }} || echo arm64)"
 
       - name: Build and push
-        if: ${{ env.BUILD_ARGS == 'no_build_args' }}
-        uses: whoan/docker-build-with-cache-action@v5
-        with:
-          image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-          registry: ${{ env.IMAGE_REGISTRY }}
-          image_name: ${{ env.IMAGE_NAME }}
-
-      - name: Build and push
-        if: ${{ ! (env.BUILD_ARGS == 'no_build_args') }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
@@ -150,7 +135,7 @@ jobs:
           password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
           registry: ${{ env.IMAGE_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
-          build_extra_args: ${{ env.BUILD_ARGS }}
+          build_extra_args: ${{ secrets.BUILD_ARGS }}
 
       - name: Login to registry
         if: ${{ matrix.platform == 'amd64' }}
