@@ -1,0 +1,201 @@
+---
+name: Build and push image
+
+on:
+  workflow_call:
+    inputs:
+      argocd_app_name:
+        description: ArgoCD app name
+        required: true
+        type: string
+      build_args:
+        default: no_build_args
+        description: Image build args
+        required: false
+        type: string
+      image_name:
+        description: Image name
+        required: true
+        type: string
+      image_registry:
+        default: 031780582162.dkr.ecr.us-east-1.amazonaws.com
+        description: Image registry
+        required: false
+        type: string
+      image_tag:
+        default: get_tag
+        description: Image tag
+        required: false
+        type: string
+      image_tag_prefix:
+        description: (Optional) Image tag prefix
+        required: false
+        type: string
+      slack_channel_id:
+        default: C02A56KCMPG
+        description: Slack channel ID
+        required: false
+        type: string
+      slack_channel_name:
+        default: eng-platforms-deploy
+        description: Slack channel name
+        required: false
+        type: string
+
+    outputs:
+      slack_ts:
+        description: Slack timestamp used for updating deployment messges
+        value: ${{ build_and_push.outputs.slack_ts }}
+
+    secrets:
+      GH_PRIVATE_REPO_TOKEN:
+        required: true
+      PLATFORMS_BOT_AUTH_TOKEN:
+        required: true
+      REGISTRY_USERNAME:
+        required: true
+      REGISTRY_PASSWORD:
+        required: true
+
+env:
+  ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
+  BUILD_ARGS: ${{ inputs.build_args }}
+  DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
+  DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
+  IMAGE_NAME: ${{ inputs.image_name }}
+  IMAGE_REGISTRY: ${{ inputs.image_registry }}
+
+jobs:
+  set_tag:
+    name: Set tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set_tag.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set tag output
+        id: set_tag
+        run: |
+            echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
+
+      - name: Show tag output
+        id: debug
+        run: echo "${{ steps.set_tag.outputs.tag }}"
+
+
+  build_and_push:
+    strategy:
+      matrix:
+        platform: [amd64, arm64]
+        include:
+          - platform: amd64
+            platform_title: AMD
+            instance_tag: ubuntu-latest
+          - platform: arm64
+            platform_title: ARM
+            instance_tag: arm-compute-vm-runner
+    runs-on: ${{ matrix.instance_tag }}
+    name: ${{ matrix.platform_title }} build and push
+    needs: set_tag
+    outputs:
+      slack_ts: ${{ steps.set_slack_ts.outputs.slack_ts_amd64 }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Show tag output
+        id: debug
+        run: echo "${{ needs.set_tag.outputs.tag }}"
+
+      - name: Show git commit data
+        uses: rlespinasse/git-commit-data-action@v1.x
+
+      - name: Notify Slack a build has started
+        if: ${{ matrix.platform == 'amd64' }}
+        id: slack_init
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: init
+          repo_name: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
+          commit_author: ${{ github.actor }}
+          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL }}
+
+      - name: Set slack_ts output
+        id: set_slack_ts
+        run: |
+            echo "::set-output name=slack_ts_${{ matrix.platform }}::$(echo ${{ steps.slack_init.outputs.slack_ts }} || echo arm64)"
+
+      - name: Build and push
+        if: ${{ env.BUILD_ARGS == 'no_build_args' }}
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          image_name: ${{ env.IMAGE_NAME }}
+
+      - name: Build and push
+        if: ${{ ! (env.BUILD_ARGS == 'no_build_args') }}
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          image_name: ${{ env.IMAGE_NAME }}
+          build_extra_args: ${{ env.BUILD_ARGS }}
+
+      - name: Login to registry
+        if: ${{ matrix.platform == 'amd64' }}
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Tag and push AMD image without platform prefix for deploy reference
+        if: ${{ matrix.platform == 'amd64' }}
+        run: |
+            docker tag \
+              ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
+              ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+
+            docker push ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+
+      - uses: mukunku/tag-exists-action@v1.0.0
+        if: ${{ matrix.platform == 'amd64' }}
+        id: check_tag
+        with: 
+          tag: ${{ needs.set_tag.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
+
+      - name: Bump version and push tag
+        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') }}
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v5.5
+        with:
+          custom_tag: ${{ needs.set_tag.outputs.tag }}
+          github_token: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
+          tag_prefix: ''
+
+      - name: Notify slack of a failure
+        if: ${{ ! success() }}
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: error
+          slack_ts: ${{ steps.slack_init.outputs.slack_ts }}
+          repo_name: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
+          commit_author: ${{ github.actor }}
+          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
+          argocd_app: ${{ env.ARGOCD_APP_NAME }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
