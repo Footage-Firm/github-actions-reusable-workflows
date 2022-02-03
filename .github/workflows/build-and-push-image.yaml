@@ -26,6 +26,11 @@ on:
         description: (Optional) Image tag prefix
         required: false
         type: string
+      notify:
+        default: 'yes'
+        description: Whether or not to notify slack
+        required: false
+        type: string
       slack_channel_id:
         default: C02A56KCMPG
         description: Slack channel ID
@@ -110,7 +115,7 @@ jobs:
         uses: rlespinasse/git-commit-data-action@v1.x
 
       - name: Notify Slack a build has started
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && inputs.notify_slack == 'yes' }}
         id: slack_init
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
@@ -131,7 +136,7 @@ jobs:
         if: ${{ ! (inputs.image_tag == 'set_tag') }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
-          image_tag: ${{ inputs.image_tag }}
+          image_tag: ${{ matrix.platform }}-${{ inputs.image_tag }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
           registry: ${{ env.IMAGE_REGISTRY }}
