@@ -18,12 +18,17 @@ on:
         required: false
         type: string
       image_tag:
-        default: get_tag
+        default: set_tag
         description: Image tag
         required: false
         type: string
       image_tag_prefix:
         description: (Optional) Image tag prefix
+        required: false
+        type: string
+      notify_slack:
+        default: 'yes'
+        description: Whether or not to notify slack
         required: false
         type: string
       slack_channel_id:
@@ -110,7 +115,7 @@ jobs:
         uses: rlespinasse/git-commit-data-action@v1.x
 
       - name: Notify Slack a build has started
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && inputs.notify_slack == 'yes' }}
         id: slack_init
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
@@ -127,7 +132,19 @@ jobs:
         run: |
             echo "::set-output name=slack_ts_${{ matrix.platform }}::$(echo ${{ steps.slack_init.outputs.slack_ts }} || echo arm64)"
 
+      - name: Build and push specifically tagged image
+        if: ${{ ! (inputs.image_tag == 'set_tag') }}
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ matrix.platform }}-${{ inputs.image_tag }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          image_name: ${{ env.IMAGE_NAME }}
+          build_extra_args: ${{ secrets.BUILD_ARGS }}
+
       - name: Build and push
+        if: ${{ inputs.image_tag == 'set_tag' }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
@@ -138,7 +155,7 @@ jobs:
           build_extra_args: ${{ secrets.BUILD_ARGS }}
 
       - name: Login to registry
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
@@ -146,7 +163,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Tag and push AMD image without platform prefix for deploy reference
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ (matrix.platform == 'amd64') && inputs.image_tag == 'set_tag' }}
         run: |
             docker tag \
               ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
@@ -155,7 +172,7 @@ jobs:
             docker push ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
         id: check_tag
         with: 
           tag: ${{ needs.set_tag.outputs.tag }}
@@ -163,7 +180,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
 
       - name: Bump version and push tag
-        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') }}
+        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') && inputs.image_tag == 'set_tag' }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v5.5
         with:
