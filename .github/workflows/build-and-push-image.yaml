@@ -26,7 +26,7 @@ on:
         description: (Optional) Image tag prefix
         required: false
         type: string
-      notify:
+      notify_slack:
         default: 'yes'
         description: Whether or not to notify slack
         required: false
