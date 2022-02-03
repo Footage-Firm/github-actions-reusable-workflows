@@ -72,16 +72,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set tag output
-        if: ${{ inputs.image_tag == 'set_tag' }}
         id: set_tag
         run: |
             echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
-
-      - name: Set tag output
-        if: ${{ ! (inputs.image_tag == 'set_tag') }}
-        id: set_tag
-        run: |
-            echo "::set-output name=tag::${{ inputs.image_tag }}"
 
       - name: Show tag output
         id: debug
@@ -134,7 +127,19 @@ jobs:
         run: |
             echo "::set-output name=slack_ts_${{ matrix.platform }}::$(echo ${{ steps.slack_init.outputs.slack_ts }} || echo arm64)"
 
+      - name: Build and push specifically tagged image
+        if: ${{ ! (inputs.image_tag == 'set_tag') }}
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ inputs.image_tag }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          image_name: ${{ env.IMAGE_NAME }}
+          build_extra_args: ${{ secrets.BUILD_ARGS }}
+
       - name: Build and push
+        if: ${{ inputs.image_tag == 'set_tag' }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
@@ -145,7 +150,7 @@ jobs:
           build_extra_args: ${{ secrets.BUILD_ARGS }}
 
       - name: Login to registry
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && ! (inputs.image_tag == 'set_tag') }}
         uses: docker/login-action@v1
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
@@ -153,7 +158,7 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Tag and push AMD image without platform prefix for deploy reference
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ (matrix.platform == 'amd64') && ! (inputs.image_tag == 'set_tag') }}
         run: |
             docker tag \
               ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
@@ -162,7 +167,7 @@ jobs:
             docker push ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
-        if: ${{ matrix.platform == 'amd64' }}
+        if: ${{ matrix.platform == 'amd64' && ! (inputs.image_tag == 'set_tag') }}
         id: check_tag
         with: 
           tag: ${{ needs.set_tag.outputs.tag }}
@@ -170,7 +175,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
 
       - name: Bump version and push tag
-        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') }}
+        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') && ! (inputs.image_tag == 'set_tag') }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v5.5
         with:
