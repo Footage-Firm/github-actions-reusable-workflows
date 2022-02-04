@@ -41,11 +41,10 @@ on:
         description: Slack channel name
         required: false
         type: string
-
-    outputs:
       slack_ts:
-        description: Slack timestamp used for updating deployment messges
-        value: ${{ jobs.build_and_push.outputs.slack_ts }}
+        description: Slack timestamp
+        required: true
+        type: string
 
     secrets:
       BUILD_ARGS:
@@ -65,6 +64,7 @@ env:
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
   IMAGE_NAME: ${{ inputs.image_name }}
   IMAGE_REGISTRY: ${{ inputs.image_registry }}
+  SLACK_TS: ${{ inputs.slack_ts }}
 
 jobs:
   set_tag:
@@ -85,6 +85,19 @@ jobs:
         id: debug
         run: echo "${{ steps.set_tag.outputs.tag }}"
 
+      - name: Notify slack of a failure
+        if: ${{ ! success() }}
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: error
+          slack_ts: ${{ env.SLACK_TS }}
+          repo_name: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
+          commit_author: ${{ github.actor }}
+          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
+          argocd_app: ${{ env.ARGOCD_APP_NAME }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
 
   build_and_push:
     strategy:
@@ -113,24 +126,6 @@ jobs:
 
       - name: Show git commit data
         uses: rlespinasse/git-commit-data-action@v1.x
-
-      - name: Notify Slack a build has started
-        if: ${{ matrix.platform == 'amd64' && inputs.notify_slack == 'yes' }}
-        id: slack_init
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
-        with:
-          action: init
-          repo_name: ${{ github.repository }}
-          commit_sha: ${{ github.sha }}
-          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
-          commit_author: ${{ github.actor }}
-          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
-          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_NAME }}
-
-      - name: Set slack_ts output
-        id: set_slack_ts
-        run: |
-            echo "::set-output name=slack_ts_${{ matrix.platform }}::$(echo ${{ steps.slack_init.outputs.slack_ts }} || echo arm64)"
 
       - name: Build and push specifically tagged image
         if: ${{ ! (inputs.image_tag == 'set_tag') }}
@@ -188,12 +183,26 @@ jobs:
           github_token: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
           tag_prefix: ''
 
-      - name: Notify slack of a failure
-        if: ${{ ! success() }}
+      - name: Notify slack of a cancellation
+        if: ${{ cancelled() && (matrix.platform == 'amd64') && (inputs.image_tag == 'set_tag') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
-          slack_ts: ${{ steps.slack_init.outputs.slack_ts }}
+          slack_ts: ${{ env.SLACK_TS }}
+          repo_name: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
+          commit_author: ${{ github.actor }}
+          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
+          argocd_app: ${{ env.ARGOCD_APP_NAME }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
+
+      - name: Notify slack of a failure
+        if: ${{ failure() }}
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: error
+          slack_ts: ${{ env.SLACK_TS }}
           repo_name: ${{ github.repository }}
           commit_sha: ${{ github.sha }}
           commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
