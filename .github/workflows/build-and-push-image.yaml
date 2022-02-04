@@ -188,8 +188,22 @@ jobs:
           github_token: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
           tag_prefix: ''
 
+      - name: Notify slack of a cancellation
+        if: ${{ cancelled() && (matrix.platform == 'amd64') && (inputs.image_tag == 'set_tag') }}
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: error
+          slack_ts: ${{ steps.slack_init.outputs.slack_ts }}
+          repo_name: ${{ github.repository }}
+          commit_sha: ${{ github.sha }}
+          commit_message: ${{ env.GIT_COMMIT_MESSAGE_SUBJECT }}
+          commit_author: ${{ github.actor }}
+          platforms_bot_token: ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}
+          argocd_app: ${{ env.ARGOCD_APP_NAME }}
+          channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
+
       - name: Notify slack of a failure
-        if: ${{ ! success() }}
+        if: ${{ failure() }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
