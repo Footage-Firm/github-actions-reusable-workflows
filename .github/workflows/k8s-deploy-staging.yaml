@@ -5,47 +5,47 @@ on:
   workflow_call:
     inputs:
       argocd_app_name:
-        description: "ArgoCD app name"
+        description: ArgoCD app name
         required: true
         type: string
       default_branch:
-        description: "Default branch"
+        description: Default branch
         required: true
         type: string
       helm_values_file:
-        default: "values.yaml"
-        description: "(Optional) Primary Helm values file where the image tag gets updated"
+        default: values.yaml
+        description: (Optional) Primary Helm values file where the image tag gets updated
         required: false
         type: string
       helm_environment_values_file:
-        default: "staging.yaml"
-        description: "(Optional) Helm values file, for a specific environment, where the image tag gets updated"
+        default: staging.yaml
+        description: (Optional) Helm values file, for a specific environment, where the image tag gets updated
         required: false
         type: string
       helm_values_file_image_tag_path:
-        default: "sb-service.image.tag"
-        description: "(Optional) Path to the image tag in the helm values file"
+        default: sb-service.image.tag
+        description: (Optional) Path to the image tag in the helm values file
         required: false
         type: string
       image_name:
-        description: "Image name"
+        description: Image name
         required: true
         type: string
       image_tag:
-        default: "get_tag"
-        description: "Image tag"
+        default: get_tag
+        description: Image tag
         required: false
         type: string
       slack_channel_id:
-        description: "Slack channel ID"
+        description: Slack channel ID
         required: true
         type: string
       slack_channel_name:
-        description: "Slack channel name"
+        description: Slack channel name
         required: true
         type: string
       slack_ts:
-        description: "Slack message timestamp"
+        description: Slack message timestamp
         required: true
         type: string
 
@@ -62,19 +62,19 @@ on:
         required: true
 
 env:
-  ARGOCD_APP_ENDPOINT: "https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}"
-  ARGOCD_APP_NAME: "${{ inputs.argocd_app_name }}"
-  APP_ENVIRONMENT: "staging"
-  DEFAULT_BRANCH: "${{ inputs.default_branch }}"
-  DEPLOYMENT_SLACK_CHANNEL_NAME: "${{ inputs.slack_channel_name }}"
-  DEPLOYMENT_SLACK_CHANNEL_ID: "${{ inputs.slack_channel_id }}"
+  ARGOCD_APP_ENDPOINT: https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}
+  ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
+  APP_ENVIRONMENT: staging
+  DEFAULT_BRANCH: ${{ inputs.default_branch }}
+  DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
+  DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
   HELM_REPO_USERNAME: chartblocks
-  HELM_VALUES_FILE: "${{ inputs.helm_values_file }}"
-  HELM_ENV_VALUES_FILE: "${{ inputs.helm_environment_values_file }}"
-  HELM_VALUES_FILE_IMAGE_TAG_PATH: "${{ inputs.helm_values_file_image_tag_path }}"
-  IMAGE_NAME: "${{ inputs.image_name }}"
-  LATEST_HELM_CHART_VERSION: "v0.0.0"
-  YQ_VERSION: "v4.12.2"
+  HELM_VALUES_FILE: ${{ inputs.helm_values_file }}
+  HELM_ENV_VALUES_FILE: ${{ inputs.helm_environment_values_file }}
+  HELM_VALUES_FILE_IMAGE_TAG_PATH: ${{ inputs.helm_values_file_image_tag_path }}
+  IMAGE_NAME: ${{ inputs.image_name }}
+  LATEST_HELM_CHART_VERSION: v0.0.0
+  YQ_VERSION: v4.12.2
 
 jobs:
   deploy_staging:
@@ -84,18 +84,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          token: "${{ secrets.PLATFORM_GITHUB_TOKEN }}"
+          token: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Get latest tag
         if: ${{ inputs.image_tag == 'get_tag' }}
         id: get_tag
-        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+        uses: WyriHaximus/github-action-get-previous-tag@v1
 
       - name: Show tag output
         if: ${{ inputs.image_tag == 'get_tag' }}
         id: debug_tag
-        run: echo "${{ steps.get_tag.outputs.tag }}"
+        run: echo ${{ steps.get_tag.outputs.tag }}
 
       - name: Show git commit data
         uses: rlespinasse/git-commit-data-action@v1.x
