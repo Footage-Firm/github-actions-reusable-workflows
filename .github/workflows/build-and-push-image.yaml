@@ -172,14 +172,10 @@ jobs:
               ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
             docker tag \
               ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
-              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }}
-            docker tag \
-              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
-              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-latest
 
             docker push ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
-            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }}
-            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-latest
 
       - uses: mukunku/tag-exists-action@v1.0.0
         if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
