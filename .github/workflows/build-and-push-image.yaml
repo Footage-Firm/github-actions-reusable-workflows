@@ -12,11 +12,6 @@ on:
         description: Image name
         required: true
         type: string
-      image_registry:
-        default: 031780582162.dkr.ecr.us-east-1.amazonaws.com
-        description: Image registry
-        required: false
-        type: string
       image_tag:
         default: set_tag
         description: Image tag
@@ -53,9 +48,13 @@ on:
         required: true
       PLATFORMS_BOT_AUTH_TOKEN:
         required: true
-      REGISTRY_USERNAME:
+      ECR_REGISTRY_USERNAME:
         required: true
-      REGISTRY_PASSWORD:
+      ECR_REGISTRY_PASSWORD:
+        required: true
+      DOCKERHUB_REGISTRY_USERNAME:
+        required: true
+      DOCKERHUB_REGISTRY_PASSWORD:
         required: true
 
 env:
@@ -133,9 +132,9 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ inputs.image_tag }}
-          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
-          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
+          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
+          registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: ${{ secrets.BUILD_ARGS }}
 
@@ -144,8 +143,8 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
-          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
+          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
           registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: ${{ secrets.BUILD_ARGS }}
@@ -155,16 +154,16 @@ jobs:
         uses: docker/login-action@v1
         with:
           registry: ${{ env.ECR_REGISTRY }}
-          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
+          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
 
       - name: Login to Dockerhub
         if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_REGISTRY_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_REGISTRY_PASSWORD }}
 
       - name: Tag and push AMD image without platform prefix for deploy reference
         if: ${{ (matrix.platform == 'amd64') && inputs.image_tag == 'set_tag' }}
