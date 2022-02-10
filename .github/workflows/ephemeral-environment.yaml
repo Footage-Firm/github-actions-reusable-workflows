@@ -1,0 +1,289 @@
+---
+name: "Run an ephemeral environment"
+
+on: 
+  workflow_call:
+    inputs:
+      app_image_name:
+        description: "Name of the main application image to publish"
+        required: true
+        type: string
+      test_image_name:
+        description: "Name of the test runner image to publish"
+        required: true
+        type: string
+      app_dockerfile_location:
+        default: "./Dockerfile"
+        description: "(Optional) Relative path to main application's Dockerfile"
+        required: false
+        type: string
+      test_dockerfile_location:
+        default: "./tests/Dockerfile"
+        description: "(Optional) Relative path to the test runner's Dockerfile"
+        required: false
+        type: string
+      app_build_args:
+        default: ""
+        description: "(Optional) Additional docker build arguments for the main application image"
+        required: false
+        type: string
+      test_build_args:
+        default: ""
+        description: "(Optional) Additional docker build arguments for the test runner image"
+        required: false
+        type: string
+      workflow:
+        default: ""
+        description: "(Optional) The workflow attribute of the triggering event. Used to swap between testrun and QA flows"
+        required: false
+        type: string
+      custom_chart_properties_script:
+        default: "./.github/scripts/custom_chart_properties.sh"
+        description: "(Optional) The script used to get custom chart properties: domain and number of tests"
+        required: false
+        type: string
+
+    secrets:
+      ARGOCD_TOKEN:
+        required: true
+      HELM_REPO_PASSWORD:
+        required: true
+      GH_PRIVATE_REPO_TOKEN:
+        required: true
+      PLATFORMS_BOT_AUTH_TOKEN:
+        required: true
+      PLATFORM_GITHUB_TOKEN:
+        required: true
+      ECR_LOGIN_AWS_ACCESS_KEY_ID:
+        required: true
+      ECR_LOGIN_AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_PIPELINE_ACCESS_KEY:
+        required: true
+      AWS_PIPELINE_SECRET_KEY:
+        required: true
+      BUILD_ARGS:
+        required: false
+
+env:
+  IS_EPHEMERAL_ON_DEMAND: "${{ inputs.workflow != '' }}"
+
+jobs:
+  build_app_image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Set tag output
+        id: set_tag
+        run: |
+          echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
+
+      - name: Build and push the web image
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ steps.set_tag.outputs.tag }}
+          dockerfile: ${{ inputs.app_dockerfile_location }}
+          username: '${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}'
+          password: '${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}'
+          registry: 031780582162.dkr.ecr.us-east-1.amazonaws.com
+          image_name: "${{ inputs.app_image_name }}"
+          build_extra_args: "${{ inputs.app_build_args }}"
+
+  build_test_image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        if: env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Set tag output
+        id: set_tag
+        if: env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        run: |
+          echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
+
+      - name: Build and push the test image
+        if: env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        uses: whoan/docker-build-with-cache-action@v5
+        with:
+          image_tag: ${{ steps.set_tag.outputs.tag }}
+          dockerfile: ${{ inputs.test_dockerfile_location }}
+          username: '${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}'
+          password: '${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}'
+          registry: 031780582162.dkr.ecr.us-east-1.amazonaws.com
+          image_name: "${{ inputs.test_image_name }}"
+          build_extra_args: "${{ inputs.test_build_args }}"
+
+  create_env:
+    needs:
+     - build_app_image
+     - build_test_image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Set tag output
+        id: set_tag
+        run: |
+          echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
+
+      - name: Configure AWS credential
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_PIPELINE_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_PIPELINE_SECRET_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup kubectl
+        run: |
+          curl -LO https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubectl
+          chmod +x ./kubectl
+
+          aws eks update-kubeconfig --name kube-staging
+
+      - name: Create ephemeral env
+        id: create_ephemeral
+        run: |
+          REVISION=$GITHUB_HEAD_REF
+          APP_TYPE="test-run"
+          if [[ "${{ github.event.ref }}" != "" ]]; then
+            REVISION=${{ github.event.ref }}
+            APP_TYPE="eod"
+          fi
+          cat <<EOF >> /tmp/payload.json
+          {
+            "repoURL": "git@github.com:${{ github.repository }}",
+            "targetRevision": "$REVISION",
+            "project": "business",
+            "cluster": "kube-staging",
+            "action": "create",
+            "appType": "$APP_TYPE",
+            "valuesFiles": [
+              "values.yaml",
+              "ephemeral.yaml",
+              "secrets.ephemeral.yaml"
+            ]
+          }
+          EOF
+          echo "Generated request"
+          cat /tmp/payload.json
+
+          TOKEN=$(echo ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }} | tr -d \\n | base64)
+          PROJECT=$(curl -X POST https://platforms-bot.storyblocks.io/ephemeral -H "Authorization: Bearer $TOKEN" --data "@/tmp/payload.json" | jq -r .namespace)
+          echo "::set-output name=project::$PROJECT"
+
+      - name: Get custom chart properties
+        id: chart_properties
+        run: ${{ inputs.custom_chart_properties_script }}
+
+      - name: Set main image version in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ steps.create_ephemeral.outputs.project }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "sb-service.image.tag=${{ steps.set_tag.outputs.tag }}"
+
+      - name: Set domain name in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ steps.create_ephemeral.outputs.project }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "sb-service.ingress.domains[0]=${{ steps.chart_properties.outputs.domain }}"
+
+      - name: Set number of tests
+        if: env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ steps.create_ephemeral.outputs.project }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set-string "tests.total=${{ steps.chart_properties.outputs.tests }}"
+
+      - name: Disable tests
+        if: env.IS_EPHEMERAL_ON_DEMAND == 'true'
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ steps.create_ephemeral.outputs.project }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set-string "tests.enabled=false }}"
+
+      - name: Create ephemeral application resources
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app sync "${{ steps.create_ephemeral.outputs.project }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}"
+
+      - name: "Get test artifacts from s3"
+        if: failure() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        uses: prewk/s3-cp-action@v2
+        with:
+          source: s3://contributor-portal-test-artifacts/${{ steps.create_ephemeral.outputs.project }}/
+          dest: ./testruns
+          aws_access_key_id: ${{ secrets.AWS_PIPELINE_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.AWS_PIPELINE_SECRET_KEY }}
+          flags: --recursive
+
+      - name: "Collect relevent test artifacts"
+        if: failure() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        run: |
+          mkdir screenshots
+          echo > ./logs.txt
+          for file in ./testruns/*.tgz; do tar -xzf "$file"; done
+          for dir in ./test-runner-*; do
+            if [ -d $dir/screenshots ]; then
+              cp -r $dir/screenshots/* ./screenshots
+              cat $dir/logs.txt >> ./logs.txt
+              echo >> ./logs.txt
+            fi
+          done
+      
+      - name: "Print testrun output"
+        if: failure() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        run: cat ./logs.txt
+
+      - uses: actions/upload-artifact@v2
+        if: failure() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        with:
+          name: failed-test-screenshots
+          path: ./screenshots
+
+      - uses: actions/upload-artifact@v2
+        if: failure() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        with:
+          name: failed-test-logs
+          path: ./logs.txt
+
+      - name: Destroy the ephemeral env
+        if: always() && env.IS_EPHEMERAL_ON_DEMAND != 'true'
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app delete ${{ steps.create_ephemeral.outputs.project }} --cascade
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+
+      - name: "Display the on-demand application URL"
+        if: env.IS_EPHEMERAL_ON_DEMAND == 'true'
+        run: |
+          echo "########################################"
+          echo "########################################"
+          echo "########################################"
+          echo "APP URL: ${{ steps.chart_properties.outputs.domain }}"
+          echo "########################################"
+          echo "########################################"
+          echo "########################################"

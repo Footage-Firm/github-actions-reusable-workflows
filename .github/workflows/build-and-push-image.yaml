@@ -63,8 +63,9 @@ env:
   DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
   IMAGE_NAME: ${{ inputs.image_name }}
-  IMAGE_REGISTRY: ${{ inputs.image_registry }}
   SLACK_TS: ${{ inputs.slack_ts }}
+  ECR_REGISTRY: 031780582162.dkr.ecr.us-east-1.amazonaws.com
+  DOCKERHUB_REGISTRY: videoblocks
 
 jobs:
   set_tag:
@@ -132,8 +133,8 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ inputs.image_tag }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
           registry: ${{ env.IMAGE_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: ${{ secrets.BUILD_ARGS }}
@@ -143,28 +144,44 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+          registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: ${{ secrets.BUILD_ARGS }}
 
-      - name: Login to registry
+      - name: Login to ECR
         if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
-          registry: ${{ env.IMAGE_REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ${{ env.ECR_REGISTRY }}
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Dockerhub
+        if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Tag and push AMD image without platform prefix for deploy reference
         if: ${{ (matrix.platform == 'amd64') && inputs.image_tag == 'set_tag' }}
         run: |
             docker tag \
-              ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
-              ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
+              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+            docker tag \
+              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
+              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }}
+            docker tag \
+              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
+              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
 
-            docker push ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+            docker push ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }}
+            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
         if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
