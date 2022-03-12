@@ -196,26 +196,14 @@ jobs:
 
       - name: Push multi-architecture image manifest to ECR
         run: |
-          attempts=0
-          max_attempts=3
-
-          until \
-            ./manifest-tool \
-              push from-args \
-              --platforms ${{ env.COMMA_SEPARATED_ARCHITECTURES }} \
-              --template ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ needs.set_tag.outputs.tag }} \
-              --target ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
-          do
-            if [ "$attempts" -eq "$max_attempts" ]; then
-              echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
-              exit 0
-            fi
-            (( attempts++ >= "$max_attempts" ))
-            sleep 1
-          done
-
-          ./manifest-tool \
-            inspect ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+          (./manifest-tool \
+            push from-args \
+            --platforms ${{ env.COMMA_SEPARATED_ARCHITECTURES }} \
+            --template ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ needs.set_tag.outputs.tag }} \
+            --target ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }} \
+          && ./manifest-tool \
+            inspect ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}) \
+          || echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
 
       - uses: mukunku/tag-exists-action@v1.0.0
         if: ${{ matrix.architecture == 'amd64' && inputs.image_tag == 'set_tag' }}
