@@ -8,6 +8,11 @@ on:
         description: ArgoCD app name
         required: true
         type: string
+      comma_separated_architectures:
+        default: linux/amd64,linux/arm64
+        description: Comma-separated list of architectures to push a multi-architecture image manifest for
+        required: false
+        type: string
       image_name:
         description: Image name
         required: true
@@ -19,6 +24,11 @@ on:
         type: string
       image_tag_prefix:
         description: (Optional) Image tag prefix
+        required: false
+        type: string
+      multi_architecture_image_tag:
+        default: multi-platform-latest
+        description: Tag to be used when pushing up the multi-arch image
         required: false
         type: string
       notify_slack:
@@ -59,12 +69,15 @@ on:
 
 env:
   ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
+  COMMA_SEPARATED_ARCHITECTURES: ${{ inputs.comma_separated_architectures }}
   DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
-  IMAGE_NAME: ${{ inputs.image_name }}
-  SLACK_TS: ${{ inputs.slack_ts }}
-  ECR_REGISTRY: 031780582162.dkr.ecr.us-east-1.amazonaws.com
   DOCKERHUB_REGISTRY: videoblocks
+  ECR_REGISTRY: 031780582162.dkr.ecr.us-east-1.amazonaws.com
+  IMAGE_NAME: ${{ inputs.image_name }}
+  MANIFEST_TOOL_VERSION: 2.0.0
+  MULTI_ARCHITECTURE_IMAGE_TAG: ${{ inputs.multi_architecture_image_tag }}
+  SLACK_TS: ${{ inputs.slack_ts }}
 
 jobs:
   set_tag:
@@ -102,16 +115,16 @@ jobs:
   build_and_push:
     strategy:
       matrix:
-        platform: [amd64, arm64]
+        architecture: [amd64, arm64]
         include:
-          - platform: amd64
-            platform_title: AMD
+          - architecture: amd64
+            architecture_title: AMD
             instance_tag: ubuntu-latest
-          - platform: arm64
-            platform_title: ARM
+          - architecture: arm64
+            architecture_title: ARM
             instance_tag: arm-compute-vm-runner
     runs-on: ${{ matrix.instance_tag }}
-    name: ${{ matrix.platform_title }} build and push
+    name: ${{ matrix.architecture_title }} build and push
     needs: set_tag
     outputs:
       slack_ts: ${{ steps.set_slack_ts.outputs.slack_ts_amd64 }}
@@ -131,7 +144,7 @@ jobs:
         if: ${{ ! (inputs.image_tag == 'set_tag') }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
-          image_tag: ${{ matrix.platform }}-${{ inputs.image_tag }}
+          image_tag: ${{ matrix.architecture }}-${{ inputs.image_tag }}
           username: ${{ secrets.ECR_REGISTRY_USERNAME }}
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
           registry: ${{ env.ECR_REGISTRY }}
@@ -142,7 +155,7 @@ jobs:
         if: ${{ inputs.image_tag == 'set_tag' }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
-          image_tag: ${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }},${{ matrix.platform }}-latest
+          image_tag: ${{ matrix.architecture }}-${{ needs.set_tag.outputs.tag }},${{ matrix.architecture }}-latest
           username: ${{ secrets.ECR_REGISTRY_USERNAME }}
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
           registry: ${{ env.ECR_REGISTRY }}
@@ -150,7 +163,7 @@ jobs:
           build_extra_args: ${{ secrets.BUILD_ARGS }}
 
       - name: Login to ECR
-        if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
+        if: ${{ matrix.architecture == 'amd64' && inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
           registry: ${{ env.ECR_REGISTRY }}
@@ -164,27 +177,48 @@ jobs:
           username: ${{ secrets.DOCKERHUB_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKERHUB_REGISTRY_PASSWORD }}
 
-      - name: Tag and push images
+      - name: Tag and push images to dockerhub
         if: ${{ inputs.image_tag == 'set_tag' }}
         run: |
-            # For all platforms: Create a dockerhub specific tag from the image that was built with an ECR registry tag
-            docker tag \
-              ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
-              ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-latest
+          # Create a dockerhub specific tag from the image that was built with an ECR registry tag
+          docker tag \
+            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-${{ needs.set_tag.outputs.tag }} \
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-latest
 
-            docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-latest
+          docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-latest
 
-            # Tag and push AMD image without platform prefix for deploy reference
-            if [ "${{ matrix.platform }}" == "amd64" ]; then
-              docker tag \
-                ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.platform }}-${{ needs.set_tag.outputs.tag }} \
-                ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+      - name: Install manifest-tool
+        run: |
+          wget -O ./manifest-tool.tar.gz https://github.com/estesp/manifest-tool/releases/download/v${{ env.MANIFEST_TOOL_VERSION }}/binaries-manifest-tool-${{ env.MANIFEST_TOOL_VERSION }}.tar.gz
+          tar zxvf ./manifest-tool.tar.gz
+          mv ./manifest-tool-linux-${{ matrix.architecture }} ./manifest-tool
+          chmod +x ./manifest-tool
 
-              docker push ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+      - name: Push multi-architecture image manifest to ECR
+        run: |
+          attempts=0
+          max_attempts=3
+
+          until \
+            ./manifest-tool \
+              push from-args \
+              --platforms ${{ env.COMMA_SEPARATED_ARCHITECTURES }} \
+              --template ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ needs.set_tag.outputs.tag }} \
+              --target ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+          do
+            if [ "$attempts" -eq "$max_attempts" ]; then
+              echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
+              exit 0
             fi
+            (( attempts++ >= "$max_attempts" ))
+            sleep 1
+          done
+
+          ./manifest-tool \
+            inspect ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
-        if: ${{ matrix.platform == 'amd64' && inputs.image_tag == 'set_tag' }}
+        if: ${{ matrix.architecture == 'amd64' && inputs.image_tag == 'set_tag' }}
         id: check_tag
         with: 
           tag: ${{ needs.set_tag.outputs.tag }}
@@ -192,7 +226,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
 
       - name: Bump version and push tag
-        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.platform == 'amd64') && inputs.image_tag == 'set_tag' }}
+        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.architecture == 'amd64') && inputs.image_tag == 'set_tag' }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v5.5
         with:
@@ -201,8 +235,8 @@ jobs:
           tag_prefix: ''
 
       - name: Notify slack of a cancellation
-        if: ${{ cancelled() && (matrix.platform == 'amd64') && (inputs.image_tag == 'set_tag') }}
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') }}
+        uses: Footage-Firm/architectures-bot-slack-notify-action@1.1.2
         with:
           action: error
           slack_ts: ${{ env.SLACK_TS }}
