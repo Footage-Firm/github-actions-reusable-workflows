@@ -236,7 +236,7 @@ jobs:
 
       - name: Notify slack of a cancellation
         if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') }}
-        uses: Footage-Firm/paltforms-bot-slack-notify-action@1.1.2
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
           slack_ts: ${{ env.SLACK_TS }}
