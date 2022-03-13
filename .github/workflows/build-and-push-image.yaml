@@ -8,6 +8,11 @@ on:
         description: ArgoCD app name
         required: true
         type: string
+      build_target:
+        default: ""
+        description: Docker build target. Provide WITH the target flag (i.e. --target=prod)
+        required: false
+        type: string
       comma_separated_architectures:
         default: linux/amd64,linux/arm64
         description: Comma-separated list of architectures to push a multi-architecture image manifest for
@@ -69,6 +74,7 @@ on:
 
 env:
   ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
+  BUILD_TARGET: ${{ inputs.build_target }}
   COMMA_SEPARATED_ARCHITECTURES: ${{ inputs.comma_separated_architectures }}
   DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
@@ -156,7 +162,7 @@ jobs:
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
           registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
-          build_extra_args: ${{ secrets.BUILD_ARGS }}
+          build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
 
       - name: Login to ECR
         if: ${{ inputs.image_tag == 'set_tag' }}
@@ -223,7 +229,7 @@ jobs:
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
           registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
-          build_extra_args: ${{ secrets.BUILD_ARGS }}
+          build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
 
       - name: Push specifically tagged multi-architecture image manifest to ECR
         if: ${{ ! (inputs.image_tag == 'set_tag') }}
