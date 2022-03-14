@@ -165,7 +165,6 @@ jobs:
           build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
 
       - name: Login to ECR
-        if: ${{ inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
           registry: ${{ env.ECR_REGISTRY }}
