@@ -48,6 +48,11 @@ on:
         description: "Slack channel name"
         required: true
         type: string
+      slack_ts:
+        default: ''
+        description: Slack message timestamp
+        required: false
+        type: string
 
     secrets:
       ARGOCD_TOKEN:
@@ -187,6 +192,22 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Update deployment message
+        if: "${{ !(github.event.client_payload.slack_message_ts == '') }}"
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "done"
+          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
+          commit_author: "${{ github.event.client_payload.github_actor }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          channel: "${{ github.event.client_payload.slack_channel_id }}"
+
+      - name: Update deployment message
+        if: "${{ (github.event.client_payload.slack_message_ts == '') && !(inputs.slack_ts == '') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "done"
@@ -201,7 +222,21 @@ jobs:
           channel: "${{ github.event.client_payload.slack_channel_id }}"
 
       - name: Notify slack of a failure
-        if: "${{ ! success() }}"
+        if: "${{ !(success()) && !(github.event.client_payload.slack_message_ts == '') }}"
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "error"
+          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
+          commit_author: "${{ github.event.client_payload.github_actor }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          channel: "${{ github.event.client_payload.slack_channel_id }}"
+
+      - name: Notify slack of a failure
+        if: "${{ !(success()) && (github.event.client_payload.slack_message_ts == '') && !(inputs.slack_ts == '') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
