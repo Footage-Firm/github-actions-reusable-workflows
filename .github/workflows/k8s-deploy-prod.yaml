@@ -211,7 +211,7 @@ jobs:
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "done"
-          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          slack_ts: "${{ inputs.slack_ts }}"
           app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
@@ -240,7 +240,7 @@ jobs:
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
-          slack_ts: "${{ github.event.client_payload.slack_message_ts }}"
+          slack_ts: "${{ inputs.slack_ts }}"
           repo_name: "${{ github.repository }}"
           commit_sha: "${{ github.sha }}"
           commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
