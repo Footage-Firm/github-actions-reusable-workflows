@@ -12,14 +12,19 @@ on:
         description: Default branch
         required: true
         type: string
-      helm_values_file:
-        default: values.yaml
-        description: (Optional) Primary Helm values file where the image tag gets updated
+      helm_chartmuseum_push:
+        default: true
+        description: (Optional) Whether or not to push to chartmuseum, defaults to true
         required: false
-        type: string
+        type: boolean
       helm_environment_values_file:
         default: staging.yaml
         description: (Optional) Helm values file, for a specific environment, where the image tag gets updated
+        required: false
+        type: string
+      helm_values_file:
+        default: values.yaml
+        description: (Optional) Primary Helm values file where the image tag gets updated
         required: false
         type: string
       helm_values_file_image_tag_path:
@@ -114,6 +119,7 @@ jobs:
           echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
 
       - name: Push new Helm chart
+        if: ${{ inputs.helm_chartmuseum_push }}
         run: |
           # Get Helm
           curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
