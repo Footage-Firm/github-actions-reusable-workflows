@@ -181,7 +181,7 @@ jobs:
         with:
           command: app patch "${{ env.ARGOCD_APP_NAME }}"
           options: |
-            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --hard-refresh --patch '{"spec": { "source": { "targetRevision": "${GITHUB_REF##*/}" }}}' --type merge
+            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --patch '{"spec": { "source": { "targetRevision": "${GITHUB_REF##*/}" }}}' --type merge
 
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
