@@ -174,6 +174,19 @@ jobs:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ inputs.image_tag }}"
 
+      - name: Get branch name
+        id: branch_name
+        uses: tj-actions/branch-names@v5.1
+
+      - name: Update branch being tracked in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app patch "${{ env.ARGOCD_APP_NAME }}"
+          options: |
+            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --patch '{"spec": { "source": { "targetRevision": "${{ steps.branch_name.outputs.current_branch }}" }}}' --type merge
+
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
         env:
