@@ -47,11 +47,11 @@ on:
         type: string
       slack_channel_id:
         description: "Slack channel ID"
-        required: true
+        required: false
         type: string
       slack_channel_name:
         description: "Slack channel name"
-        required: true
+        required: false
         type: string
       slack_ts:
         default: ''
