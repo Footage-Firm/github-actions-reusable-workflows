@@ -35,7 +35,7 @@ on:
         description: "(Optional) Image tag prefix"
         required: false
         type: string
-      notify_slack:
+      legacy_slack_notifications:
         default: 'yes'
         description: Whether or not to notify slack
         required: false
@@ -186,7 +186,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Update deployment message
-        if: "${{ inputs.notify_slack == 'yes' }}"
+        if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "done"
@@ -201,7 +201,7 @@ jobs:
           channel: "${{ github.event.client_payload.slack_channel_id }}"
 
       - name: Notify slack of a failure
-        if: "${{ ! success() && (inputs.notify_slack == 'yes') }}"
+        if: "${{ ! success() && (inputs.legacy_slack_notifications == 'yes') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
