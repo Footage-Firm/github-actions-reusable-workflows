@@ -12,6 +12,11 @@ on:
         description: "Default branch"
         required: true
         type: string
+      helm_chartmuseum_push:
+        default: true
+        description: (Optional) Whether or not to push to chartmuseum, defaults to true
+        required: false
+        type: boolean
       helm_values_file:
         default: "helm/prod.yaml"
         description: "(Optional) Helm values file where the image tag gets updated"
@@ -47,6 +52,11 @@ on:
       slack_channel_name:
         description: "Slack channel name"
         required: true
+        type: string
+      slack_ts:
+        default: ''
+        description: Slack message timestamp
+        required: false
         type: string
 
     secrets:
@@ -108,6 +118,7 @@ jobs:
           echo " - ${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
 
       - name: Push new Helm chart
+        if: ${{ inputs.helm_chartmuseum_push }}
         run: |
           # Get Helm
           curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
@@ -199,7 +210,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Update deployment message
-        if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
+        if: "${{ !(github.event.client_payload.slack_message_ts == '') && inputs.legacy_slack_notifications == 'yes' }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "done"
@@ -213,8 +224,23 @@ jobs:
           platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
           channel: "${{ github.event.client_payload.slack_channel_id }}"
 
+      - name: Update deployment message
+        if: "${{ (github.event.client_payload.slack_message_ts == '') && !(inputs.slack_ts == '') }}"
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "done"
+          slack_ts: "${{ inputs.slack_ts }}"
+          app_endpoint: "${{ env.ARGOCD_APP_ENDPOINT }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
+          commit_author: "${{ github.actor }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          channel: "${{ inputs.slack_channel_id }}"
+
       - name: Notify slack of a failure
-        if: "${{ ! success() && (inputs.legacy_slack_notifications == 'yes') }}"
+        if: "${{ ! success() && (inputs.legacy_slack_notifications == 'yes') && !(github.event.client_payload.slack_message_ts == '') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
@@ -226,3 +252,17 @@ jobs:
           platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
           argocd_app: "${{ env.ARGOCD_APP_NAME }}"
           channel: "${{ github.event.client_payload.slack_channel_id }}"
+
+      - name: Notify slack of a failure
+        if: "${{ !(success()) && (github.event.client_payload.slack_message_ts == '') && !(inputs.slack_ts == '') }}"
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
+        with:
+          action: "error"
+          slack_ts: "${{ inputs.slack_ts }}"
+          repo_name: "${{ github.repository }}"
+          commit_sha: "${{ github.sha }}"
+          commit_message: "${{ env.GIT_COMMIT_MESSAGE_SUBJECT_SANITIZED }}"
+          commit_author: "${{ github.actor }}"
+          platforms_bot_token: "${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }}"
+          argocd_app: "${{ env.ARGOCD_APP_NAME }}"
+          channel: "${{ inputs.slack_channel_id }}"
