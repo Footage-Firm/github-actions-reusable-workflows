@@ -53,7 +53,7 @@ on:
         type: string
       slack_ts:
         description: Slack timestamp
-        required: true
+        required: false
         type: string
 
     secrets:
@@ -105,7 +105,7 @@ jobs:
         run: echo "${{ steps.set_tag.outputs.tag }}"
 
       - name: Notify slack of a failure
-        if: ${{ ! success() }}
+        if: ${{ !(success()) && (inputs.notify_slack == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
@@ -243,7 +243,7 @@ jobs:
           || echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
 
       - name: Notify slack of a cancellation
-        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') }}
+        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') && (inputs.notify_slack == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
@@ -257,7 +257,7 @@ jobs:
           channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
 
       - name: Notify slack of a failure
-        if: ${{ failure() }}
+        if: ${{ (failure()) && (inputs.notify_slack == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error

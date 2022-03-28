@@ -36,6 +36,11 @@ on:
         description: Image tag
         required: false
         type: string
+      notify_slack:
+        default: 'yes'
+        description: Whether or not to notify slack
+        required: false
+        type: string
       slack_channel_id:
         description: Slack channel ID
         required: true
@@ -46,7 +51,7 @@ on:
         type: string
       slack_ts:
         description: Slack message timestamp
-        required: true
+        required: false
         type: string
 
     secrets:
@@ -212,6 +217,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Notify Slack the staging deploy is done
+        if: "${{ inputs.notify_slack == 'yes' }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "deploy_to_staging"
@@ -226,7 +232,7 @@ jobs:
           channel: "${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}"
 
       - name: Notify slack of a failure
-        if: "${{ ! success() }}"
+        if: "${{ !(success()) && (inputs.notify_slack == 'yes') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "error"
