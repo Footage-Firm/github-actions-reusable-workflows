@@ -40,6 +40,11 @@ on:
         description: "(Optional) Image tag prefix"
         required: false
         type: string
+      legacy_slack_notifications:
+        default: 'yes'
+        description: Whether or not to notify slack
+        required: false
+        type: string
       slack_channel_id:
         description: "Slack channel ID"
         required: true
@@ -167,6 +172,19 @@ jobs:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ inputs.image_tag }}"
 
+      - name: Get branch name
+        id: branch_name
+        uses: tj-actions/branch-names@v5.1
+
+      - name: Update branch being tracked in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app patch "${{ env.ARGOCD_APP_NAME }}"
+          options: |
+            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --patch '{"spec": { "source": { "targetRevision": "${{ steps.branch_name.outputs.current_branch }}" }}}' --type merge
+
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
         env:
@@ -192,7 +210,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Update deployment message
-        if: "${{ !(github.event.client_payload.slack_message_ts == '') }}"
+        if: "${{ !(github.event.client_payload.slack_message_ts == '') && inputs.legacy_slack_notifications == 'yes' }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "done"
@@ -222,7 +240,7 @@ jobs:
           channel: "${{ inputs.slack_channel_id }}"
 
       - name: Notify slack of a failure
-        if: "${{ !(success()) && !(github.event.client_payload.slack_message_ts == '') }}"
+        if: "${{ ! success() && (inputs.legacy_slack_notifications == 'yes') && !(github.event.client_payload.slack_message_ts == '') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"

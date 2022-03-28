@@ -41,17 +41,22 @@ on:
         description: Image tag
         required: false
         type: string
+      legacy_slack_notifications:
+        default: 'yes'
+        description: Whether or not to notify slack
+        required: false
+        type: string
       slack_channel_id:
         description: Slack channel ID
-        required: true
+        required: false
         type: string
       slack_channel_name:
         description: Slack channel name
-        required: true
+        required: false
         type: string
       slack_ts:
         description: Slack message timestamp
-        required: true
+        required: false
         type: string
 
     secrets:
@@ -180,6 +185,19 @@ jobs:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_IMAGE_TAG_PATH }}=${{ inputs.image_tag }}"
 
+      - name: Get branch name
+        id: branch_name
+        uses: tj-actions/branch-names@v5.1
+
+      - name: Update branch being tracked in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app patch "${{ env.ARGOCD_APP_NAME }}"
+          options: |
+            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --patch '{"spec": { "source": { "targetRevision": "${{ steps.branch_name.outputs.current_branch }}" }}}' --type merge
+
       - name: Force ArgoCD refresh
         uses: clowdhaus/argo-cd-action/@main
         env:
@@ -205,6 +223,7 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Notify Slack the staging deploy is done
+        if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "deploy_to_staging"
@@ -219,7 +238,7 @@ jobs:
           channel: "${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}"
 
       - name: Notify slack of a failure
-        if: "${{ ! success() }}"
+        if: "${{ !(success()) && (inputs.legacy_slack_notifications == 'yes') }}"
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
         with:
           action: "error"

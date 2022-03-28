@@ -31,14 +31,14 @@ on:
         description: (Optional) Image tag prefix
         required: false
         type: string
+      legacy_slack_notifications:
+        default: 'yes'
+        description: Whether or not to notify slack
+        required: false
+        type: string
       multi_architecture_image_tag:
         default: multi-platform-latest
         description: Tag to be used when pushing up the multi-arch image
-        required: false
-        type: string
-      notify_slack:
-        default: 'yes'
-        description: Whether or not to notify slack
         required: false
         type: string
       slack_channel_id:
@@ -53,7 +53,7 @@ on:
         type: string
       slack_ts:
         description: Slack timestamp
-        required: true
+        required: false
         type: string
 
     secrets:
@@ -105,7 +105,7 @@ jobs:
         run: echo "${{ steps.set_tag.outputs.tag }}"
 
       - name: Notify slack of a failure
-        if: ${{ ! success() }}
+        if: ${{ !(success()) && (inputs.legacy_slack_notifications == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
@@ -243,7 +243,7 @@ jobs:
           || echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
 
       - name: Notify slack of a cancellation
-        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') }}
+        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') && (inputs.legacy_slack_notifications == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
@@ -257,7 +257,7 @@ jobs:
           channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
 
       - name: Notify slack of a failure
-        if: ${{ failure() }}
+        if: ${{ (failure()) && (inputs.legacy_slack_notifications == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
