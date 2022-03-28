@@ -224,7 +224,7 @@ jobs:
 
       - name: Notify Slack the staging deploy is done
         if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "deploy_to_staging"
           argocd_app: "${{ env.ARGOCD_APP_NAME }}"
@@ -239,7 +239,7 @@ jobs:
 
       - name: Notify slack of a failure
         if: "${{ !(success()) && (inputs.legacy_slack_notifications == 'yes') }}"
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: "error"
           slack_ts: "${{ inputs.slack_ts }}"
