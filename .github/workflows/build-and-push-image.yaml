@@ -18,6 +18,11 @@ on:
         description: Comma-separated list of architectures to push a multi-architecture image manifest for
         required: false
         type: string
+      dockerfile:
+        default: Dockerfile
+        description: The dockerfile used to build the image.
+        required: false
+        type: string
       image_name:
         description: Image name
         required: true
@@ -78,6 +83,7 @@ env:
   COMMA_SEPARATED_ARCHITECTURES: ${{ inputs.comma_separated_architectures }}
   DEPLOYMENT_SLACK_CHANNEL_NAME: ${{ inputs.slack_channel_name }}
   DEPLOYMENT_SLACK_CHANNEL_ID: ${{ inputs.slack_channel_id }}
+  DOCKERFILE: ${{ inputs.dockerfile }}
   DOCKERHUB_REGISTRY: videoblocks
   ECR_REGISTRY: 031780582162.dkr.ecr.us-east-1.amazonaws.com
   IMAGE_NAME: ${{ inputs.image_name }}
@@ -157,6 +163,7 @@ jobs:
         if: ${{ inputs.image_tag == 'set_tag' }}
         uses: whoan/docker-build-with-cache-action@v5
         with:
+          dockerfile: ${{ env.DOCKERFILE }}
           image_tag: ${{ matrix.architecture }}-${{ needs.set_tag.outputs.tag }},${{ matrix.architecture }}-latest
           username: ${{ secrets.ECR_REGISTRY_USERNAME }}
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
