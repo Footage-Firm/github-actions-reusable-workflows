@@ -180,6 +180,14 @@ jobs:
           options: |
             --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --patch '{"spec": { "source": { "targetRevision": "${{ steps.branch_name.outputs.current_branch }}" }}}' --type merge
 
+      - name: Set service SHA in ArgoCD
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ env.ARGOCD_APP_NAME }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_SERVICE_VERSION_PATH }}=${{ env.GITHUB_SHA }}"
+
       - name: Set image version in ArgoCD
         if: ${{ inputs.image_tag == 'get_tag' }}
         uses: clowdhaus/argo-cd-action/@main
