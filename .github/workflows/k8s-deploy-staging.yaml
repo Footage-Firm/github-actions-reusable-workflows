@@ -32,6 +32,11 @@ on:
         description: (Optional) Path to the image tag in the helm values file
         required: false
         type: string
+      helm_values_file_service_version_path:
+        default: "version"
+        description: "(Optional) Path to the version in the helm values file"
+        required: false
+        type: string
       image_name:
         description: Image name
         required: true
@@ -82,6 +87,7 @@ env:
   HELM_VALUES_FILE: ${{ inputs.helm_values_file }}
   HELM_ENV_VALUES_FILE: ${{ inputs.helm_environment_values_file }}
   HELM_VALUES_FILE_IMAGE_TAG_PATH: ${{ inputs.helm_values_file_image_tag_path }}
+  HELM_VALUES_FILE_SERVICE_VERSION_PATH: "${{ inputs.helm_values_file_service_version_path }}"
   IMAGE_NAME: ${{ inputs.image_name }}
   LATEST_HELM_CHART_VERSION: v0.0.0
   YQ_VERSION: v4.12.2
