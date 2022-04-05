@@ -192,7 +192,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
         with:
           command: app set "${{ env.ARGOCD_APP_NAME }}"
-          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_SERVICE_VERSION_PATH }}=${{ env.GITHUB_SHA }}"
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }} --helm-set "${{ env.HELM_VALUES_FILE_SERVICE_VERSION_PATH }}=${{ github.sha }}"
 
       - name: Set image version in ArgoCD
         if: ${{ inputs.image_tag == 'get_tag' }}
