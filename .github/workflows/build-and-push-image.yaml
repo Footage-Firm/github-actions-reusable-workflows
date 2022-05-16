@@ -6,7 +6,7 @@ on:
     inputs:
       argocd_app_name:
         description: ArgoCD app name
-        required: true
+        required: false
         type: string
       build_target:
         default: ""
