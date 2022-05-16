@@ -112,7 +112,7 @@ jobs:
 
       - name: Notify slack of a failure
         if: ${{ !(success()) && (inputs.legacy_slack_notifications == 'yes') }}
-        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.3
+        uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
           slack_ts: ${{ env.SLACK_TS }}
