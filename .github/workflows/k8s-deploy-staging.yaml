@@ -37,6 +37,11 @@ on:
         description: "(Optional) Path to the version in the helm values file"
         required: false
         type: string
+      honeycomb_dataset:
+        description: "(Optional) The dataset name for honeycomb data set"
+        default: ''
+        required: false
+        type: string
       image_name:
         description: Image name
         required: true
@@ -75,6 +80,8 @@ on:
         required: true
       PLATFORM_GITHUB_TOKEN:
         required: true
+      STAGING_HONEYCOMB_API_KEY:
+        required: false
 
 env:
   ARGOCD_APP_ENDPOINT: https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}
@@ -88,6 +95,7 @@ env:
   HELM_ENV_VALUES_FILE: ${{ inputs.helm_environment_values_file }}
   HELM_VALUES_FILE_IMAGE_TAG_PATH: ${{ inputs.helm_values_file_image_tag_path }}
   HELM_VALUES_FILE_SERVICE_VERSION_PATH: "${{ inputs.helm_values_file_service_version_path }}"
+  HONEYCOMB_DATASET: ${{ inputs.honeycomb_dataset }}
   IMAGE_NAME: ${{ inputs.image_name }}
   LATEST_HELM_CHART_VERSION: v0.0.0
   YQ_VERSION: v4.12.2
@@ -235,6 +243,15 @@ jobs:
         with:
           command: app wait "${{ env.ARGOCD_APP_NAME }}" --timeout 480
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+
+      - name: Create Deployment Marker
+        if: "${{ (success()) && (inputs.honeycomb_dataset != '') }}"
+        uses: naiduarvind/gha-honeymarker@master
+        with:
+          apikey: ${{ secrets.STAGING_HONEYCOMB_API_KEY }}
+          dataset: ${{ env.HONEYCOMB_DATASET }}
+          type: 'deploy-to-staging'
+          message: 'staging-deployment-${{ github.run_number }}-${{ job.status }}'
 
       - name: Notify Slack the staging deploy is done
         if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
