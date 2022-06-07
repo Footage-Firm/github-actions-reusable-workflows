@@ -233,7 +233,7 @@ jobs:
 
       - name: Create Deployment Marker
         if: "${{ always() && (inputs.honeycomb_dataset != '') }}"
-        uses: naiduarvind/gha-honeymarker@main
+        uses: naiduarvind/gha-honeymarker@master
         with:
           apikey: ${{ secrets.PROD_HONEYCOMB_API_KEY }}
           dataset: ${{ env.HONEYCOMB_DATASET }}
