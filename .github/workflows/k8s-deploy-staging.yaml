@@ -245,13 +245,13 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Create Deployment Marker
-        if: "${{ (success()) && (inputs.honeycomb_dataset != '') }}"
+        if: "${{ always() && (inputs.honeycomb_dataset != '') }}"
         uses: naiduarvind/gha-honeymarker@master
         with:
           apikey: ${{ secrets.STAGING_HONEYCOMB_API_KEY }}
           dataset: ${{ env.HONEYCOMB_DATASET }}
           type: 'deploy-to-staging'
-          message: 'staging-deployment-${{ github.run_number }}-${{ job.status }}'
+          message: 'deployment-${{ job.status }}-${{ github.sha }}'
 
       - name: Notify Slack the staging deploy is done
         if: "${{ inputs.legacy_slack_notifications == 'yes' }}"

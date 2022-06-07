@@ -232,13 +232,13 @@ jobs:
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Create Deployment Marker
-        if: "${{ (success()) && (inputs.honeycomb_dataset != '') }}"
+        if: "${{ always() && (inputs.honeycomb_dataset != '') }}"
         uses: naiduarvind/gha-honeymarker@main
         with:
           apikey: ${{ secrets.PROD_HONEYCOMB_API_KEY }}
           dataset: ${{ env.HONEYCOMB_DATASET }}
           type: ${{ github.workflow }}
-          message: 'prod-deploy-${{ github.run_number }}-${{ job.status }}' 
+          message: 'deploy-${{ job.status }}-${{ github.sha }}' 
 
       - name: Update deployment message
         if: "${{ !(github.event.client_payload.slack_message_ts == '') && inputs.legacy_slack_notifications == 'yes' }}"
