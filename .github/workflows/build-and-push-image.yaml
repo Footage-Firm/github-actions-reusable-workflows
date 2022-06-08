@@ -172,6 +172,7 @@ jobs:
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
           build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
         env:
+          DEPOT_PROJECT_ID: "njzsdnp9fd"
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
