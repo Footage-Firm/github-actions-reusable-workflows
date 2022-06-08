@@ -160,19 +160,27 @@ jobs:
           username: ${{ secrets.ECR_REGISTRY_USERNAME }}
           password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
 
+      - name: Split build args into list
+        uses: jungwinter/split@v2
+        id: split
+        with:
+          msg: ${{ secrets.BUILD_ARGS }}
+          separator: ","
+
       - name: Build and push
         if: ${{ inputs.image_tag == 'set_tag' }}
         uses: depot/build-push-action@v1
         with:
           push: true
           file: ${{ env.DOCKERFILE }}
+          build-args: ${{ steps.split.outputs }}
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
-          build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
+          target: ${{ env.BUILD_TARGET }}
         env:
           DEPOT_PROJECT_ID: "njzsdnp9fd"
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
