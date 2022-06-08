@@ -173,7 +173,7 @@ jobs:
         with:
           push: true
           file: ${{ env.DOCKERFILE }}
-          build-args: ${{ steps.split.outputs }}
+          build-args: ${{ steps.split.outputs.* }}
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
