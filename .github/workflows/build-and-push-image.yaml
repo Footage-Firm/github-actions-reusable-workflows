@@ -151,7 +151,7 @@ jobs:
 
       - name: Show split args
         id: debug_split
-        run: echo "${{ steps.split.outputs }}"
+        run: echo "${{ toJSON(steps.split.outputs) }}"
 
       - name: Set build args
         id: build_args
