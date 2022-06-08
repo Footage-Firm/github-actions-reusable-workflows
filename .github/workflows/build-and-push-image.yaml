@@ -64,6 +64,8 @@ on:
     secrets:
       BUILD_ARGS:
         required: true
+      DEPOT_TOKEN:
+        required: true
       GH_PRIVATE_REPO_TOKEN:
         required: true
       PLATFORMS_BOT_AUTH_TOKEN:
@@ -125,21 +127,11 @@ jobs:
           channel: ${{ env.DEPLOYMENT_SLACK_CHANNEL_ID }}
 
   build_and_push:
-    strategy:
-      matrix:
-        architecture: [amd64, arm64]
-        include:
-          - architecture: amd64
-            architecture_title: AMD
-            instance_tag: ubuntu-latest
-          - architecture: arm64
-            architecture_title: ARM
-            instance_tag: arm-compute-vm-runner
-    runs-on: ${{ matrix.instance_tag }}
-    name: ${{ matrix.architecture_title }} build and push
+    runs-on: ubuntu-latest
+    name: Multi-arch build and push
     needs: set_tag
     outputs:
-      slack_ts: ${{ steps.set_slack_ts.outputs.slack_ts_amd64 }}
+      slack_ts: ${{ steps.set_slack_ts.outputs.slack_ts }}
 
     steps:
       - name: Checkout code
@@ -152,31 +144,7 @@ jobs:
       - name: Show git commit data
         uses: rlespinasse/git-commit-data-action@v1.x
 
-      - name: Install manifest-tool
-        run: |
-          wget -O ./manifest-tool.tar.gz https://github.com/estesp/manifest-tool/releases/download/v${{ env.MANIFEST_TOOL_VERSION }}/binaries-manifest-tool-${{ env.MANIFEST_TOOL_VERSION }}.tar.gz
-          tar zxvf ./manifest-tool.tar.gz
-          mv ./manifest-tool-linux-${{ matrix.architecture }} ./manifest-tool
-          chmod +x ./manifest-tool
-
-      - name: Build and push
-        if: ${{ inputs.image_tag == 'set_tag' }}
-        uses: whoan/docker-build-with-cache-action@v5
-        with:
-          dockerfile: ${{ env.DOCKERFILE }}
-          image_tag: ${{ matrix.architecture }}-${{ needs.set_tag.outputs.tag }},${{ matrix.architecture }}-latest
-          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
-          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
-          registry: ${{ env.ECR_REGISTRY }}
-          image_name: ${{ env.IMAGE_NAME }}
-          build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
-
-      - name: Login to ECR
-        uses: docker/login-action@v1
-        with:
-          registry: ${{ env.ECR_REGISTRY }}
-          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
-          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
+      - uses: depot/setup-action@v1
 
       - name: Login to Dockerhub
         if: ${{ inputs.image_tag == 'set_tag' }}
@@ -185,30 +153,46 @@ jobs:
           username: ${{ secrets.DOCKERHUB_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKERHUB_REGISTRY_PASSWORD }}
 
-      - name: Tag and push images to dockerhub
-        if: ${{ inputs.image_tag == 'set_tag' }}
-        run: |
-          # Create a dockerhub specific tag from the image that was built with an ECR registry tag
-          docker tag \
-            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-${{ needs.set_tag.outputs.tag }} \
-            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-latest
+      - name: Login to ECR
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.ECR_REGISTRY }}
+          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
+          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
 
-          docker push ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.architecture }}-latest
+      - name: Split build args into list
+        uses: jungwinter/split@v2
+        id: split
+        with:
+          msg: ${{ secrets.BUILD_ARGS }}
+          separator: ","
 
-      - name: Push multi-architecture image manifest to ECR
+      - name: Show split args
+        id: debug_args
+        run: echo "${{ steps.split.outputs.* }}"
+
+      - name: Build and push
         if: ${{ inputs.image_tag == 'set_tag' }}
-        run: |
-          (./manifest-tool \
-            push from-args \
-            --platforms ${{ env.COMMA_SEPARATED_ARCHITECTURES }} \
-            --template ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ needs.set_tag.outputs.tag }} \
-            --target ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }} \
-          && ./manifest-tool \
-            inspect ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}) \
-          || echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
+        uses: depot/build-push-action@v1
+        with:
+          push: true
+          file: ${{ env.DOCKERFILE }}
+          build-args: |
+            ${{ steps.split.outputs._0 }}
+            ${{ steps.split.outputs._1 }}
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
+          target: ${{ env.BUILD_TARGET }}
+        env:
+          DEPOT_PROJECT_ID: "njzsdnp9fd"
+          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
 
       - uses: mukunku/tag-exists-action@v1.0.0
-        if: ${{ matrix.architecture == 'amd64' && inputs.image_tag == 'set_tag' }}
+        if: ${{ inputs.image_tag == 'set_tag' }}
         id: check_tag
         with: 
           tag: ${{ needs.set_tag.outputs.tag }}
@@ -216,7 +200,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
 
       - name: Bump version and push tag
-        if: ${{ !(steps.check_tag.outputs.exists == 'true') && (matrix.architecture == 'amd64') && inputs.image_tag == 'set_tag' }}
+        if: ${{ !(steps.check_tag.outputs.exists == 'true') && inputs.image_tag == 'set_tag' }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v5.5
         with:
