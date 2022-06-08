@@ -238,7 +238,7 @@ jobs:
           apikey: ${{ secrets.PROD_HONEYCOMB_API_KEY }}
           dataset: ${{ env.HONEYCOMB_DATASET }}
           type: ${{ github.workflow }}
-          message: 'deployment-${{ job.status }}-${{ steps.get_tag.outputs.tag }}'
+          message: 'deploy-${{ job.status }}-${{ steps.get_tag.outputs.tag }}'
 
       - name: Update deployment message
         if: "${{ !(github.event.client_payload.slack_message_ts == '') && inputs.legacy_slack_notifications == 'yes' }}"
