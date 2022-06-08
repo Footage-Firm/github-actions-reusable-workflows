@@ -167,13 +167,19 @@ jobs:
           msg: ${{ secrets.BUILD_ARGS }}
           separator: ","
 
+      - name: Show split args
+        id: debug_args
+        run: echo "${{ steps.split.outputs.* }}"
+
       - name: Build and push
         if: ${{ inputs.image_tag == 'set_tag' }}
         uses: depot/build-push-action@v1
         with:
           push: true
           file: ${{ env.DOCKERFILE }}
-          build-args: ${{ steps.split.outputs.* }}
+          build-args: |
+            ${{ steps.split.outputs._0 }}
+            ${{ steps.split.outputs._1 }}
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
