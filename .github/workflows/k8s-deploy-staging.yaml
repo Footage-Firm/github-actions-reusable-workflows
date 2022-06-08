@@ -251,7 +251,7 @@ jobs:
           apikey: ${{ secrets.STAGING_HONEYCOMB_API_KEY }}
           dataset: ${{ env.HONEYCOMB_DATASET }}
           type: 'deploy-to-staging'
-          message: 'deployment-${{ job.status }}-${{ github.sha }}'
+          message: 'deployment-${{ job.status }}-${{ steps.get_tag.outputs.tag }}'
 
       - name: Notify Slack the staging deploy is done
         if: "${{ inputs.legacy_slack_notifications == 'yes' }}"
