@@ -69,20 +69,6 @@ on:
         required: false
         type: string
 
-    secrets:
-      ARGOCD_TOKEN:
-        required: true
-      HELM_REPO_PASSWORD:
-        required: true
-      GH_PRIVATE_REPO_TOKEN:
-        required: true
-      PLATFORMS_BOT_AUTH_TOKEN:
-        required: true
-      PLATFORM_GITHUB_TOKEN:
-        required: true
-      STAGING_HONEYCOMB_API_KEY:
-        required: false
-
 env:
   ARGOCD_APP_ENDPOINT: https://argocd.storyblocks.io/applications/${{ inputs.argocd_app_name }}
   ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
@@ -244,12 +230,17 @@ jobs:
           command: app wait "${{ env.ARGOCD_APP_NAME }}" --timeout 480
           options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
+      - name: Set marker name
+        id: marker
+        run: |
+            echo "::set-output name=name::$(echo "${{ env.ARGOCD_APP_NAME }}" | sed -e 's/staging-//g')"
+
       - name: Create Deployment Marker
-        if: "${{ always() && (inputs.honeycomb_dataset != '') }}"
+        if: "${{ always() }}"
         uses: naiduarvind/gha-honeymarker@master
         with:
           apikey: ${{ secrets.STAGING_HONEYCOMB_API_KEY }}
-          dataset: ${{ env.HONEYCOMB_DATASET }}
+          dataset: ${{ steps.marker.outputs.name }}
           type: 'deploy-to-staging'
           message: 'deploy-${{ job.status }}-${{ steps.get_tag.outputs.tag }}'
 
