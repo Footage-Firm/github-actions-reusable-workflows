@@ -156,7 +156,7 @@ jobs:
       - name: Set build args
         id: build_args
         run: |
-          echo "::set-output name=args::$(echo ${{ toJSON(steps.split.outputs) }} | grep _ | awk -F ': ' '{print $2}' | sed -e 's/,//g')"
+          echo "::set-output name=args::$(jq -rn 'inputs | values[]' ${{ toJSON(steps.split.outputs) }} | tail +2)"
 
       - name: Show split args
         id: debug_args
