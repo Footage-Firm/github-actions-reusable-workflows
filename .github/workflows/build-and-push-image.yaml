@@ -61,24 +61,6 @@ on:
         required: false
         type: string
 
-    secrets:
-      BUILD_ARGS:
-        required: true
-      DEPOT_TOKEN:
-        required: true
-      GH_PRIVATE_REPO_TOKEN:
-        required: true
-      PLATFORMS_BOT_AUTH_TOKEN:
-        required: true
-      ECR_REGISTRY_USERNAME:
-        required: true
-      ECR_REGISTRY_PASSWORD:
-        required: true
-      DOCKERHUB_REGISTRY_USERNAME:
-        required: true
-      DOCKERHUB_REGISTRY_PASSWORD:
-        required: true
-
 env:
   ARGOCD_APP_NAME: ${{ inputs.argocd_app_name }}
   BUILD_TARGET: ${{ inputs.build_target }}
@@ -150,21 +132,21 @@ jobs:
         if: ${{ inputs.image_tag == 'set_tag' }}
         uses: docker/login-action@v1
         with:
-          username: ${{ secrets.DOCKERHUB_REGISTRY_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_REGISTRY_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
       - name: Login to ECR
         uses: docker/login-action@v1
         with:
           registry: ${{ env.ECR_REGISTRY }}
-          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
-          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
 
       - name: Split build args into list
         uses: jungwinter/split@v2
         id: split
         with:
-          msg: ${{ secrets.BUILD_ARGS }}
+          msg: ${{ secrets.IMAGE_BUILD_ARGS }}
           separator: ","
 
       - name: Set build args
@@ -220,8 +202,8 @@ jobs:
         uses: whoan/docker-build-with-cache-action@v5
         with:
           image_tag: ${{ matrix.architecture }}-${{ inputs.image_tag }}
-          username: ${{ secrets.ECR_REGISTRY_USERNAME }}
-          password: ${{ secrets.ECR_REGISTRY_PASSWORD }}
+          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
           registry: ${{ env.ECR_REGISTRY }}
           image_name: ${{ env.IMAGE_NAME }}
           build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
