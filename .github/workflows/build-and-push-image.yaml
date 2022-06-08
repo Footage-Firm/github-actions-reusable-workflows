@@ -64,6 +64,8 @@ on:
     secrets:
       BUILD_ARGS:
         required: true
+      DEPOT_TOKEN:
+        required: true
       GH_PRIVATE_REPO_TOKEN:
         required: true
       PLATFORMS_BOT_AUTH_TOKEN:
