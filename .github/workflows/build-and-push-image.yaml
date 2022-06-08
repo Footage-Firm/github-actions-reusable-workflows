@@ -165,7 +165,7 @@ jobs:
         uses: depot/build-push-action@v1
         with:
           push: true
-          dockerfile: ${{ env.DOCKERFILE }}
+          file: ${{ env.DOCKERFILE }}
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
