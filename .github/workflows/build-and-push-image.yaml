@@ -143,23 +143,9 @@ jobs:
           password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
 
       - name: Split build args into list
-        uses: jungwinter/split@v2
-        id: split
-        with:
-          msg: ${{ secrets.IMAGE_BUILD_ARGS }}
-          separator: ","
-
-      - name: Save split args
-        run: echo "${{ toJSON(steps.split.outputs) }}" > tmp.json
-
-      - name: Show split args
-        id: debug_split
-        run: cat tmp.json
-
-      - name: Set build args
         id: build_args
         run: |
-          echo "::set-output name=args::$(jq -rn 'inputs | values[]' tmp.json | tail +2)"
+          echo "::set-output name=args::$(echo '${{ secrets.IMAGE_BUILD_ARGS }} | tr ',' '\n')"
 
       - name: Show split args
         id: debug_args
