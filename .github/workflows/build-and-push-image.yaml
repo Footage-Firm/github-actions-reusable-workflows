@@ -186,33 +186,27 @@ jobs:
           github_token: ${{ secrets.GH_PRIVATE_REPO_TOKEN }}
           tag_prefix: ''
 
-      # The following two steps are only used when a specific tag is passed as an input to this reusable workflow
+      # The following step is only used when a specific tag is passed as an input to this reusable workflow
 
-      - name: Build and push specifically tagged image
+      - name: Build and push
         if: ${{ ! (inputs.image_tag == 'set_tag') }}
-        uses: whoan/docker-build-with-cache-action@v5
+        uses: depot/build-push-action@v1
         with:
-          image_tag: ${{ matrix.architecture }}-${{ inputs.image_tag }}
-          username: ${{ secrets.ECR_LOGIN_AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.ECR_LOGIN_AWS_SECRET_ACCESS_KEY }}
-          registry: ${{ env.ECR_REGISTRY }}
-          image_name: ${{ env.IMAGE_NAME }}
-          build_extra_args: "${{ env.BUILD_TARGET }} ${{ secrets.BUILD_ARGS }}"
+          push: true
+          file: ${{ env.DOCKERFILE }}
+          build-args: |
+            ${{ steps.build_args.outputs.args }}
+          platforms: ${{ env.COMMA_SEPARATED_ARCHITECTURES }}
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          target: ${{ env.BUILD_TARGET }}
+        env:
+          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
 
-      - name: Push specifically tagged multi-architecture image manifest to ECR
-        if: ${{ ! (inputs.image_tag == 'set_tag') }}
-        run: |
-          (./manifest-tool \
-            push from-args \
-            --platforms ${{ env.COMMA_SEPARATED_ARCHITECTURES }} \
-            --template ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:ARCH-${{ inputs.image_tag }} \
-            --target ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
-          && ./manifest-tool \
-            inspect ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}) \
-          || echo "Can't push multi-arch image. This most likely means the builds for the other architectures are not yet complete."
+      # Legacy notifications
 
       - name: Notify slack of a cancellation
-        if: ${{ cancelled() && (matrix.architecture == 'amd64') && (inputs.image_tag == 'set_tag') && (inputs.legacy_slack_notifications == 'yes') }}
+        if: ${{ cancelled() && (inputs.image_tag == 'set_tag') && (inputs.legacy_slack_notifications == 'yes') }}
         uses: Footage-Firm/platforms-bot-slack-notify-action@1.1.2
         with:
           action: error
