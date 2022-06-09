@@ -196,6 +196,7 @@ jobs:
           push: true
           file: ${{ env.DOCKERFILE }}
           build-args: |
+            BASE64_SSH_PRIVATE_KEY=${{ secrets.BASE64_SSH_PRIVATE_KEY }}
             ${{ steps.build_args.outputs.args }}
           platforms: ${{ env.COMMA_SEPARATED_ARCHITECTURES }}
           tags: |
