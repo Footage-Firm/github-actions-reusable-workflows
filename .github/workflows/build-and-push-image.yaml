@@ -149,9 +149,12 @@ jobs:
           msg: ${{ secrets.IMAGE_BUILD_ARGS }}
           separator: ","
 
+      - name: Save split args
+        run: echo "${{ toJSON(steps.split.outputs) }}" > tmp.json
+
       - name: Show split args
         id: debug_split
-        run: echo "${{ toJSON(steps.split.outputs) }}" > tmp.json
+        run: cat tmp.json
 
       - name: Set build args
         id: build_args
