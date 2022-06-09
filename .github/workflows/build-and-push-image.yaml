@@ -145,7 +145,7 @@ jobs:
       - name: Split build args into list
         id: build_args
         run: |
-          echo "::set-output name=args::$(echo '${{ secrets.IMAGE_BUILD_ARGS }} | tr ',' '\n')"
+          echo "::set-output name=args::$(echo ${{ secrets.IMAGE_BUILD_ARGS }} | tr ',' '\n')"
 
       - name: Show split args
         id: debug_args
