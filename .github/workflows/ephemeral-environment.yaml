@@ -1,0 +1,202 @@
+---
+name: Create ephemeral environment
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        default: us-east-1
+        description: The default region used when authing with AWS. Required to auth, but irrelevant to this workflow
+        required: false
+        type: string
+      target_cluster:
+        default: kube-staging
+        description: k8s cluster where the ephemeral environment will be deployed
+        required: false
+        type: string
+      test_artifact_bucket:
+        description: The s3 bucket where test runners will upload their artifacts
+        required: true
+        type: string
+
+jobs:
+  create_environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Set tag output
+        id: set_tag
+        run: |
+          echo "::set-output name=tag::$(date +'%m-%d-%Y')-$(git rev-parse --short HEAD)"
+
+      - name: Configure AWS credential
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_PIPELINE_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_PIPELINE_SECRET_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Setup kubectl
+        run: |
+          curl -LO https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubectl
+          chmod +x ./kubectl
+
+          aws eks update-kubeconfig --name ${{ inputs.target_cluster }}
+
+      - name: Create ephemeral env project in ArgoCD
+        id: create_ephemeral
+        run: |
+          APP_TYPE="test-run"
+          if [[ "${{ github.event.workflow }}" != "" ]]; then
+            APP_TYPE="eod"
+          fi
+
+          REVISION=$GITHUB_HEAD_REF
+          if [[ "$REVISION" == "" ]]; then
+            REVISION=${{ github.event.ref }}
+          fi
+          REVISION=${REVISION##refs/heads/}
+
+          cat <<EOF >> /tmp/payload.json
+          {
+            "repoURL": "git@github.com:${{ github.repository }}",
+            "targetRevision": "$REVISION",
+            "project": "business",
+            "cluster": "${{ inputs.target_cluster }}",
+            "action": "create",
+            "appType": "$APP_TYPE",
+            "valuesFiles": [
+              "values.yaml",
+              "ephemeral.yaml",
+              "secrets.ephemeral.yaml"
+            ]
+          }
+          EOF
+          echo "Generated request"
+          cat /tmp/payload.json
+
+          TOKEN=$(echo ${{ secrets.PLATFORMS_BOT_AUTH_TOKEN }} | tr -d \\n | base64)
+          PROJECT=$(curl -X POST https://platforms-bot.storyblocks.io/ephemeral -H "Authorization: Bearer $TOKEN" --data "@/tmp/payload.json" | jq -r .namespace)
+          echo "::set-output name=project::$PROJECT"
+
+      - name: Extract branch name
+        id: extract_branch
+        run: |
+          BRANCH=${{ github.head_ref }}
+          echo "Value from github.head_ref: $BRANCH"
+          if [[ "$BRANCH" == "" ]]; then
+            echo "Using value from GITHUB_REF instead"
+            BRANCH=${GITHUB_REF##refs/heads/}
+          fi
+          echo "##[set-output name=branch;]$(echo $BRANCH)"
+
+      - name: Get custom chart properties
+        id: chart_properties
+        run: |
+          echo "::set-output name=domain::${{ steps.create_ephemeral.outputs.project }}.staging.storyblocks.io"
+          echo "::set-output name=attempt::${GITHUB_RUN_ATTEMPT}"
+          if [[ "${{ github.event.workflow }}" -eq "" ]]; then
+            cd cypress
+            echo "::set-output name=tests::$(find ./integration -name "*.js" -print0 | xargs -0 ls | wc -l)"
+
+            ## Get tesults target token to use
+            TOKENS=$(curl https://www.tesults.com/api/targets -H "Authorization: Bearer ${{ secrets.TESULTS_API_TOKEN }}")
+            echo $TOKENS
+            TARGET=$(echo $TOKENS | jq '.data.targets[] | select(.name == "${{ github.event.repository.name }}/${{ steps.extract_branch.outputs.branch }}") | .id')
+            if [[ "${TARGET}" -eq "" ]]; then
+              ## This is the first time running this pipeline, create a new token
+              echo "creating a new target"
+              RESPONSE=$(curl -X POST -d '{"name": "${{ github.event.repository.name }}/${{ steps.extract_branch.outputs.branch }}"}' \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${{ secrets.TESULTS_API_TOKEN }}" \
+                https://www.tesults.com/api/targets)
+              TOKEN=$(echo $RESPONSE | jq -r '.data.token')
+              TARGET=$(echo $RESPONSE | jq -r '.data.target.id')
+            else
+              ## The target exists, so let's regenerate the token
+              echo "regenerating token for target $TARGET"
+              TOKEN=$(curl -X POST \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${{ secrets.TESULTS_API_TOKEN }}" \
+                https://www.tesults.com/api/targets/${TARGET}/regenerate_token | jq -r '.data.token')
+            fi
+            echo "::set-output name=token::${TOKEN}"
+            echo "::set-output name=target::${TARGET}"
+          else
+            echo "::set-output name=token::unused"
+            echo "::set-output name=tests::0"
+          fi
+
+      - name: Set branch specific overrides in the ArgoCD project
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app set "${{ steps.create_ephemeral.outputs.project }}"
+          options: |
+            --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+            --helm-set "sb-service.image.tag=${{ steps.set_tag.outputs.tag }}"
+            --helm-set "branch=${{ steps.extract_branch.outputs.branch }}"
+            --helm-set "sb-service.ingress.domains[0]=${{ steps.chart_properties.outputs.domain }}"
+            --helm-set-string "tests.token=${{ steps.chart_properties.outputs.token }}"
+            --helm-set-string "tests.total=${{ steps.chart_properties.outputs.tests }}"
+            --helm-set-string "tests.run_attempt=${{ steps.chart_properties.outputs.attempt }}"
+
+      - name: Create ephemeral application resources and wait for success
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app sync "${{ steps.create_ephemeral.outputs.project }}"
+          options: |
+            --server argocd.storyblocks.io
+            --auth-token ${{ secrets.ARGOCD_TOKEN }}"
+            --timeout 1500
+            --grpc-web
+
+      - name: Get reports location
+        if: always() && github.event.workflow == ''
+        id: reports
+        run: echo "::set-output name=dir::${GITHUB_WORKSPACE}/reports"
+
+      - name: Get test artifacts from s3
+        if: always() && github.event.workflow == ''
+        uses: prewk/s3-cp-action@v2
+        with:
+          source: s3://${{ inputs.test_artifact_bucket }}/${{ steps.extract_branch.outputs.branch }}/${{ steps.set_tag.outputs.tag }}/${{ steps.chart_properties.outputs.attempt }}
+          dest: ${{ steps.reports.outputs.dir }}
+          aws_access_key_id: ${{ secrets.AWS_PIPELINE_ACCESS_KEY }}
+          aws_secret_access_key: ${{ secrets.AWS_PIPELINE_SECRET_KEY }}
+          flags: --recursive
+
+      - name: Send test data to Tesults
+        if: always() && github.event.workflow == ''
+        uses: rkenney525/tesults-aggregate-upload-action@main
+        with:
+          target_token: ${{ steps.chart_properties.outputs.token }}
+          test_data_directory: ${{ steps.reports.outputs.dir }}
+
+      - name: Destroy the ephemeral env
+        if: always() && github.event.workflow == ''
+        uses: clowdhaus/argo-cd-action/@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app delete ${{ steps.create_ephemeral.outputs.project }} --cascade
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
+
+      - name: Display the on-demand application URL
+        if: github.event.workflow != ''
+        run: |
+          echo "## APP URL: ${{ steps.chart_properties.outputs.domain }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Display link to Tesults dashboard
+        if: always() && github.event.workflow == ''
+        run: |
+          echo "## Tesults URL: https://www.tesults.com/results/rsp/view/results/target/5d7b627a-0f07-4dcf-9faa-ec79cef9a087-${{ steps.chart_properties.outputs.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
