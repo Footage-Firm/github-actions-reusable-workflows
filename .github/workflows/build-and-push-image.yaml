@@ -162,9 +162,9 @@ jobs:
             ${{ steps.build_args.outputs.args }}
           platforms: ${{ env.COMMA_SEPARATED_ARCHITECTURES }}
           tags: |
-            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:multi-platform-latest
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.MULTI_ARCHITECTURE_IMAGE_TAG }}
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
-            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:multi-platform-latest
+            ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.MULTI_ARCHITECTURE_IMAGE_TAG }}
             ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set_tag.outputs.tag }}
           target: ${{ env.BUILD_TARGET }}
         env:
