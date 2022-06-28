@@ -27,7 +27,7 @@ jobs:
         uses: styfle/cancel-workflow-action@0.9.1
         with:
           access_token: ${{ github.token }}
-          
+
       - name: Checkout code
         uses: actions/checkout@v2
         with:
@@ -184,6 +184,16 @@ jobs:
         with:
           target_token: ${{ steps.chart_properties.outputs.token }}
           test_data_directory: ${{ steps.reports.outputs.dir }}
+
+      - name: Stop the argo sync
+        if: always() && github.event.workflow == ''
+        uses: clowdhaus/argo-cd-action/@main
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.PLATFORM_GITHUB_TOKEN }}
+        with:
+          command: app terminate-op ${{ steps.create_ephemeral.outputs.project }}
+          options: --server argocd.storyblocks.io --auth-token ${{ secrets.ARGOCD_TOKEN }}
 
       - name: Destroy the ephemeral env
         if: always() && github.event.workflow == ''
