@@ -180,7 +180,7 @@ jobs:
 
       - name: Send test data to Tesults
         if: always() && github.event.workflow == ''
-        uses: rkenney525/tesults-aggregate-upload-action@main
+        uses: Footage-Firm/tesults-aggregate-upload-action@main
         with:
           target_token: ${{ steps.chart_properties.outputs.token }}
           test_data_directory: ${{ steps.reports.outputs.dir }}
